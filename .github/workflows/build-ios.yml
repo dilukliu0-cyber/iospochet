@@ -1,0 +1,105 @@
+name: Build unsigned iOS IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Write .env
+        # Значения берутся из Repository variables (Settings → Secrets and
+        # variables → Actions → Variables) — задайте там EXPO_PUBLIC_SUPABASE_URL
+        # и EXPO_PUBLIC_SUPABASE_ANON_KEY перед первым запуском. Они не хранятся
+        # в репозитории.
+        env:
+          SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Задайте Repository variables EXPO_PUBLIC_SUPABASE_URL и EXPO_PUBLIC_SUPABASE_ANON_KEY (Settings → Secrets and variables → Actions → Variables)"
+            exit 1
+          fi
+          echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL" >> .env
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> .env
+
+      - name: Expo prebuild (iOS)
+        # --non-interactive не поддерживается CLI — используем CI=1.
+        run: CI=1 npx expo prebuild --platform ios
+
+      - name: Pod install
+        working-directory: ios
+        run: pod install --repo-update
+
+      - name: Detect workspace and scheme
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          WORKSPACE=$(ls -d *.xcworkspace | head -n1)
+          echo "Workspace: $WORKSPACE"
+          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list \
+            | awk '/Schemes:/{flag=1;next} /^ *$/{if (flag) exit} flag{print}' \
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
+            | head -n1)
+          echo "Scheme: $SCHEME"
+          if [ -z "$WORKSPACE" ] || [ -z "$SCHEME" ]; then
+            echo "Не удалось определить workspace/scheme" >&2
+            exit 1
+          fi
+          echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
+          echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
+
+      - name: Archive (unsigned)
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          mkdir -p ../build
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            -archivePath ../build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP_PATH=$(find build/App.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n1)
+          if [ -z "$APP_PATH" ]; then
+            echo ".app не найден в архиве" >&2
+            exit 1
+          fi
+          echo "App: $APP_PATH"
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+          cd build
+          zip -r -y App.ipa Payload
+          ls -la App.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: App-ipa
+          path: build/App.ipa
+          if-no-files-found: error

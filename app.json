@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "aiphone",
+    "slug": "aiphone",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dilukliu0.iospochet"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Разрешите доступ к камере, чтобы фотографировать чеки."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Разрешите доступ к галерее, чтобы загрузить фото чека."
+        }
+      ]
+    ]
+  }
+}

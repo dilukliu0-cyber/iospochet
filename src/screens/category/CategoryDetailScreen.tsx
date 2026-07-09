@@ -1,0 +1,227 @@
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AnimatedProgressBar } from '../../components/ui/AnimatedProgressBar';
+import { CategoryIcon } from '../../components/ui/CategoryIcon';
+import { FadeInView } from '../../components/ui/FadeInView';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
+import type { AppStackParamList } from '../../navigation/types';
+import { supabase } from '../../services/api/supabaseClient';
+import { fetchMonthlyCategoryBreakdown } from '../../services/analytics/categoryBreakdown';
+import { useAuthStore } from '../../store/authStore';
+import { useLimitsStore } from '../../store/limitsStore';
+import { colors, getCategoryColor } from '../../theme/colors';
+import { themedStyles } from '../../theme/themedStyles';
+
+type ProductRow = {
+  cleaned_name: string;
+  price: number;
+  quantity: number;
+  weight_value: number | null;
+  weight_unit: string | null;
+  receipt: { exchange_rate: number | null } | null;
+};
+
+type Props = NativeStackScreenProps<AppStackParamList, 'Category'>;
+
+export function CategoryDetailScreen({ route, navigation }: Props) {
+  const { categoryName } = route.params;
+  const userId = useAuthStore((state) => state.session?.user.id);
+  const limits = useLimitsStore((state) => state.limits);
+  const fetchLimits = useLimitsStore((state) => state.fetch);
+
+  const [rows, setRows] = useState<ProductRow[]>([]);
+  const [totalAll, setTotalAll] = useState(0);
+  const [currency, setCurrency] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      if (!userId) return;
+      fetchLimits(userId);
+      const [{ data }, breakdown] = await Promise.all([
+        supabase
+          .from('receipt_items')
+          .select('cleaned_name, price, quantity, weight_value, weight_unit, receipt:receipts(exchange_rate)')
+          .eq('user_id', userId)
+          .eq('category_name', categoryName),
+        fetchMonthlyCategoryBreakdown(userId),
+      ]);
+      setRows(((data as unknown as ProductRow[]) ?? []).filter((r) => r.receipt));
+      setTotalAll(breakdown.entries.reduce((sum, e) => sum + e.total, 0));
+      setCurrency(breakdown.currency);
+      setLoading(false);
+    }
+    load();
+  }, [userId, categoryName, fetchLimits]);
+
+  const categoryTotal = rows.reduce((sum, r) => sum + r.price * (r.receipt?.exchange_rate ?? 1), 0);
+  const percentOfAll = totalAll > 0 ? (categoryTotal / totalAll) * 100 : 0;
+  const limit = limits.find((l) => l.category_name === categoryName);
+  const limitPercent = limit && limit.amount > 0 ? (categoryTotal / limit.amount) * 100 : 0;
+
+  const popular = useMemo(() => {
+    const byName = new Map<string, { total: number; count: number; weight: number; weightUnit: string | null }>();
+    for (const row of rows) {
+      const entry = byName.get(row.cleaned_name) ?? { total: 0, count: 0, weight: 0, weightUnit: null };
+      entry.total += row.price * (row.receipt?.exchange_rate ?? 1);
+      entry.count += 1;
+      entry.weight += (row.weight_value ?? 0) * (row.quantity || 1);
+      if (row.weight_unit) entry.weightUnit = row.weight_unit;
+      byName.set(row.cleaned_name, entry);
+    }
+    return [...byName.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  }, [rows]);
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color={colors.accent} size="large" />
+      </View>
+    );
+  }
+
+  const color = getCategoryColor(categoryName);
+
+  return (
+    <View style={styles.container}>
+      <ScreenHeader title={categoryName} onBack={() => navigation.goBack()} />
+
+      <ScrollView contentContainerStyle={styles.content}>
+        <FadeInView index={0}>
+          <View style={styles.summaryCard}>
+            <CategoryIcon category={categoryName} size={48} />
+            <Text style={styles.total}>
+              {categoryTotal.toFixed(0)} {currency}
+            </Text>
+            <Text style={styles.percentOfAll}>{percentOfAll.toFixed(0)}% от всех расходов</Text>
+          </View>
+        </FadeInView>
+
+        {limit && (
+          <FadeInView index={1}>
+            <View style={styles.limitCard}>
+              <Text style={styles.limitLabel}>
+                {limitPercent.toFixed(0)}% от лимита ({limit.amount.toFixed(0)} {limit.currency})
+              </Text>
+              <AnimatedProgressBar percent={limitPercent} />
+            </View>
+          </FadeInView>
+        )}
+
+        <Text style={styles.sectionTitle}>Популярные товары</Text>
+        <View style={styles.products}>
+          {popular.map((product, i) => (
+            <FadeInView key={product.name} index={i}>
+              <Pressable
+                style={styles.productRow}
+                onPress={() => navigation.navigate('Product', { productName: product.name })}
+              >
+                <CategoryIcon category={categoryName} size={40} color={color} />
+                <View style={styles.productInfo}>
+                  <Text style={styles.productName}>{product.name}</Text>
+                  <Text style={styles.productMeta}>
+                    {product.count} {product.count === 1 ? 'покупка' : 'покупок'}
+                    {product.weight > 0 ? ` · ${product.weight.toFixed(0)} ${product.weightUnit ?? 'г'}` : ''}
+                  </Text>
+                </View>
+                <Text style={styles.productTotal}>
+                  {product.total.toFixed(0)} {currency}
+                </Text>
+              </Pressable>
+            </FadeInView>
+          ))}
+          {popular.length === 0 && <Text style={styles.emptyText}>Покупок в этой категории пока нет.</Text>}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = themedStyles(() => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  loading: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    padding: 20,
+    gap: 14,
+    paddingBottom: 40,
+  },
+  summaryCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  total: {
+    color: colors.textPrimary,
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  percentOfAll: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  limitCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  limitLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  sectionTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  products: {
+    gap: 8,
+  },
+  productRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 12,
+  },
+  productInfo: {
+    flex: 1,
+  },
+  productName: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  productMeta: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  productTotal: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+}));
