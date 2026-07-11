@@ -1,6 +1,7 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { PenLine, ScanLine, ShieldCheck, Sparkles, User, Users } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { PenLine, ScanLine, ShieldCheck, Sparkles, User, Users, WalletCards } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -169,7 +170,12 @@ export function HomeScreen() {
       )}
 
       <FadeInView index={1}>
-        <View style={styles.spendCard}>
+        <LinearGradient
+          colors={[colors.heroFrom, colors.heroTo]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.spendCard}
+        >
           <View style={styles.spendHeader}>
             <Text style={styles.spendLabel}>Расходы за {periodLabel}</Text>
             <View style={styles.spendHeaderRight}>
@@ -209,7 +215,7 @@ export function HomeScreen() {
               <Sparkline data={dailySeries} width={300} height={72} />
             </View>
           )}
-        </View>
+        </LinearGradient>
       </FadeInView>
 
       <FadeInView index={2}>
@@ -219,7 +225,9 @@ export function HomeScreen() {
             style={styles.actionButton}
             onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Scan')}
           >
-            <ScanLine color={colors.accent} size={20} />
+            <View style={styles.actionIconChip}>
+              <ScanLine color={colors.accent} size={18} />
+            </View>
             <Text style={styles.actionLabel}>Сканировать чек</Text>
           </Pressable>
           <Pressable
@@ -228,15 +236,28 @@ export function HomeScreen() {
               navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('AddExpense')
             }
           >
-            <PenLine color={colors.accent} size={20} />
+            <View style={styles.actionIconChip}>
+              <PenLine color={colors.accent} size={18} />
+            </View>
             <Text style={styles.actionLabel}>Добавить вручную</Text>
           </Pressable>
         </View>
         <Pressable
+          style={styles.incomeButton}
+          onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('AddIncome')}
+        >
+          <View style={styles.actionIconChip}>
+            <WalletCards color={colors.accent} size={18} />
+          </View>
+          <Text style={styles.limitsButtonLabel}>Добавить доход</Text>
+        </Pressable>
+        <Pressable
           style={styles.limitsButton}
           onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Limits')}
         >
-          <ShieldCheck color={colors.accent} size={20} />
+          <View style={styles.actionIconChip}>
+            <ShieldCheck color={colors.accent} size={18} />
+          </View>
           <Text style={styles.limitsButtonLabel}>Лимиты и бюджет</Text>
         </Pressable>
       </FadeInView>
@@ -308,8 +329,9 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   greeting: {
     color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   greetingSub: {
     color: colors.textSecondary,
@@ -330,18 +352,22 @@ const styles = themedStyles(() => StyleSheet.create({
     justifyContent: 'center',
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.accent,
   },
   avatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: colors.surfaceElevated,
+    borderWidth: 2,
+    borderColor: colors.accent,
   },
   avatarText: {
     color: colors.accent,
@@ -384,8 +410,11 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   spendCard: {
     backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: 22,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    overflow: 'hidden',
   },
   spendHeader: {
     flexDirection: 'row',
@@ -435,8 +464,9 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   spendTotal: {
     color: colors.textPrimary,
-    fontSize: 30,
-    fontWeight: '700',
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: -0.8,
     marginTop: 8,
   },
   spendSub: {
@@ -450,13 +480,22 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   sectionTitle: {
     color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
     marginBottom: 10,
   },
   actionsRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  actionIconChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   limitsButton: {
     flexDirection: 'row',
@@ -464,15 +503,30 @@ const styles = themedStyles(() => StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 16,
+    paddingVertical: 13,
     paddingHorizontal: 14,
     marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  incomeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   limitsButtonLabel: {
     color: colors.textPrimary,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   topCategories: {
     gap: 8,
@@ -482,8 +536,10 @@ const styles = themedStyles(() => StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   categoryName: {
     flex: 1,
@@ -508,14 +564,16 @@ const styles = themedStyles(() => StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
+    borderRadius: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   actionLabel: {
     color: colors.textPrimary,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     flex: 1,
   },
   widgetsSection: {

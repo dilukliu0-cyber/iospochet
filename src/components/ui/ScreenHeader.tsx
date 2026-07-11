@@ -47,6 +47,10 @@ const styles = themedStyles(() => StyleSheet.create({
   iconButton: {
     width: 40,
     height: 40,
+    borderRadius: 13,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -54,7 +58,8 @@ const styles = themedStyles(() => StyleSheet.create({
     flex: 1,
     color: colors.textPrimary,
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.2,
     textAlign: 'center',
   },
 }));

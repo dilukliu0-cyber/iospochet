@@ -32,4 +32,5 @@ export type AppStackParamList = {
   Category: { categoryName: string };
   Family: undefined;
   NewTemplate: undefined;
+  AddIncome: undefined;
 };

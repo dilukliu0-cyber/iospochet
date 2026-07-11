@@ -1,7 +1,18 @@
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { CalendarDays, CloudUpload, Send, Trash2, User, Users, Wallet, X } from 'lucide-react-native';
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
+  CalendarDays,
+  CloudUpload,
+  PlusCircle,
+  Send,
+  Trash2,
+  User,
+  Users,
+  Wallet,
+} from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -29,13 +40,19 @@ import { getQueue, removeFromQueue, type QueuedScan } from '../../services/offli
 import { avatarUrl } from '../../services/profile/avatarService';
 import { submitScan } from '../../services/receipts/backgroundScan';
 import { deleteReceipt } from '../../services/receipts/receiptsService';
+import { deleteIncome, fetchIncomes, fetchWalletBalance } from '../../services/wallet/walletService';
 import { useAuthStore } from '../../store/authStore';
 import { useReceiptsStore } from '../../store/receiptsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToastStore } from '../../store/toastStore';
 import { colors, getCategoryColor } from '../../theme/colors';
+import type { IncomeRecord } from '../../types/income';
 import type { ReceiptRecord } from '../../types/receiptRecord';
 import { themedStyles } from '../../theme/themedStyles';
+
+type FeedEntry =
+  | { kind: 'receipt'; id: string; sortDate: string; receipt: ReceiptRecord }
+  | { kind: 'income'; id: string; sortDate: string; income: IncomeRecord };
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const MONTH_NAMES = [
@@ -61,9 +78,21 @@ export function ExpensesScreen() {
   const [categoryCurrency, setCategoryCurrency] = useState('');
   const [showOnlyMine, setShowOnlyMine] = useState(false);
 
-  // 3D-переворот карточки: спереди диаграмма, сзади мини-календарь.
+  // Кошелёк: баланс = доходы − расходы, вводится вручную с Главной.
+  const [walletBalance, setWalletBalance] = useState<{
+    balance: number;
+    totalIncome: number;
+    totalExpense: number;
+    currency: string;
+  } | null>(null);
+  const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
+
+  // 3D-переворот карточки: спереди диаграмма, сзади календарь (поворот вправо)
+  // или кошелёк (поворот влево).
   const flipAnim = useRef(new Animated.Value(0)).current;
-  const [flipped, setFlipped] = useState(false);
+  const [openFace, setOpenFace] = useState<'calendar' | 'wallet' | null>(null);
+  const [backContent, setBackContent] = useState<'calendar' | 'wallet'>('calendar');
+  const walletMode = openFace === 'wallet';
 
   function loadCategories() {
     if (!userId) return;
@@ -80,10 +109,11 @@ export function ExpensesScreen() {
       if (userId) {
         fetchReceipts(userId);
         loadCategories();
+        if (walletMode) loadWallet();
       }
       getQueue().then(setPendingScans);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userId, fetchReceipts]),
+    }, [userId, fetchReceipts, walletMode]),
   );
 
   useEffect(() => {
@@ -95,15 +125,61 @@ export function ExpensesScreen() {
     return navigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
   }
 
-  function toggleFlip() {
-    const next = !flipped;
-    setFlipped(next);
+  function animateFlip(toValue: number) {
     Animated.spring(flipAnim, {
-      toValue: next ? 1 : 0,
+      toValue,
       useNativeDriver: true,
       friction: 8,
       tension: 14,
     }).start();
+  }
+
+  function toggleFlip() {
+    if (openFace === 'calendar') {
+      setOpenFace(null);
+      animateFlip(0);
+      return;
+    }
+    setBackContent('calendar');
+    setOpenFace('calendar');
+    animateFlip(1);
+  }
+
+  function loadWallet() {
+    if (!userId) return;
+    fetchWalletBalance(userId).then(setWalletBalance);
+    fetchIncomes(userId).then(setIncomes);
+  }
+
+  function toggleWallet() {
+    if (openFace === 'wallet') {
+      setOpenFace(null);
+      animateFlip(0);
+      return;
+    }
+    loadWallet();
+    setBackContent('wallet');
+    setOpenFace('wallet');
+    animateFlip(-1);
+  }
+
+  function handleIncomeLongPress(income: IncomeRecord) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert('Удалить доход?', 'Сумма исчезнет из баланса кошелька.', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: async () => {
+          const error = await deleteIncome(income.id);
+          if (error) {
+            Alert.alert('Не удалось удалить доход', error);
+            return;
+          }
+          loadWallet();
+        },
+      },
+    ]);
   }
 
   async function sendQueuedScan(scan: QueuedScan) {
@@ -171,6 +247,21 @@ export function ExpensesScreen() {
   const visibleReceipts = showOnlyMine ? receipts.filter((r) => r.user_id === userId) : receipts;
   const myAvatar = avatarUrl(settings?.avatar_path ?? null, settings?.updated_at);
 
+  // Список чеков как есть, если кошелёк выключен; с включённым — доходы
+  // подмешиваются рядом, отсортированные вместе по дате.
+  const receiptEntries: FeedEntry[] = visibleReceipts.map((r) => ({
+    kind: 'receipt',
+    id: r.id,
+    sortDate: r.purchase_date ?? r.created_at,
+    receipt: r,
+  }));
+  const feedItems: FeedEntry[] = walletMode
+    ? [
+        ...receiptEntries,
+        ...incomes.map((i): FeedEntry => ({ kind: 'income', id: i.id, sortDate: i.created_at, income: i })),
+      ].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+    : receiptEntries;
+
   if (!isLoading && receipts.length === 0 && pendingScans.length === 0) {
     return (
       <ScreenPlaceholder
@@ -207,32 +298,72 @@ export function ExpensesScreen() {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
+  // Календарь открывается поворотом вправо (0→1), кошелёк — влево (0→−1).
   const frontAnimated = {
     transform: [
       { perspective: 1000 },
-      { rotateY: flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] }) },
+      {
+        rotateY: flipAnim.interpolate({
+          inputRange: [-1, 0, 1],
+          outputRange: ['-180deg', '0deg', '180deg'],
+        }),
+      },
     ],
   };
   const backAnimated = {
     transform: [
       { perspective: 1000 },
-      { rotateY: flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] }) },
+      {
+        rotateY:
+          backContent === 'calendar'
+            ? flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['180deg', '360deg'] })
+            : flipAnim.interpolate({ inputRange: [-1, 0], outputRange: ['0deg', '-180deg'] }),
+      },
     ],
   };
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={visibleReceipts}
-        keyExtractor={(item) => item.id}
+        data={feedItems}
+        keyExtractor={(item) => `${item.kind}-${item.id}`}
         renderItem={({ item, index }) => {
-          const foreignOwner = item.user_id !== userId ? ownerProfiles[item.user_id] : null;
+          if (item.kind === 'income') {
+            return (
+              <FadeInView index={index}>
+                <Pressable
+                  style={styles.incomeRow}
+                  onLongPress={() => handleIncomeLongPress(item.income)}
+                >
+                  <View style={styles.incomeIcon}>
+                    <PlusCircle color={colors.success} size={20} />
+                  </View>
+                  <View style={styles.incomeInfo}>
+                    <Text style={styles.incomeNote} numberOfLines={1}>
+                      {item.income.note?.trim() || 'Доход'}
+                    </Text>
+                    <Text style={styles.incomeDate}>
+                      {new Date(item.income.created_at).toLocaleDateString('ru-RU', {
+                        day: 'numeric',
+                        month: 'long',
+                      })}
+                    </Text>
+                  </View>
+                  <Text style={styles.incomeAmount}>
+                    +{item.income.amount.toFixed(0)} {item.income.currency}
+                  </Text>
+                </Pressable>
+              </FadeInView>
+            );
+          }
+          const receipt = item.receipt;
+          const foreignOwner = receipt.user_id !== userId ? ownerProfiles[receipt.user_id] : null;
           return (
             <FadeInView index={index}>
               <ReceiptListItem
-                receipt={item}
-                onPress={() => openDetail(item.id)}
-                onLongPress={() => handleLongPress(item)}
+                receipt={receipt}
+                onPress={() => openDetail(receipt.id)}
+                onLongPress={() => handleLongPress(receipt)}
                 ownerAvatarUrl={
                   foreignOwner ? avatarUrl(foreignOwner.avatar_path, foreignOwner.updated_at) : myAvatar
                 }
@@ -266,19 +397,15 @@ export function ExpensesScreen() {
             {segments.length > 0 && (
               <FadeInView index={0}>
                 <View style={styles.flipWrap}>
-                  {/* Задняя сторона: мини-календарь */}
+                  {/* Задняя сторона: мини-календарь (кнопка справа) */}
+                  {backContent === 'calendar' && (
                   <Animated.View
                     style={[styles.chartCard, styles.cardBack, backAnimated]}
-                    pointerEvents={flipped ? 'auto' : 'none'}
+                    pointerEvents={openFace ? 'auto' : 'none'}
                   >
-                    <View style={styles.cardCornerRow}>
-                      <Text style={styles.calendarTitle}>
-                        {MONTH_NAMES[now.getMonth()]} {now.getFullYear()}
-                      </Text>
-                      <Pressable style={styles.cornerButton} onPress={toggleFlip} hitSlop={6}>
-                        <X color={colors.accent} size={18} />
-                      </Pressable>
-                    </View>
+                    <Text style={[styles.calendarTitle, styles.backTitle]}>
+                      {MONTH_NAMES[now.getMonth()]} {now.getFullYear()}
+                    </Text>
                     <View style={styles.weekRow}>
                       {WEEKDAYS.map((day) => (
                         <Text key={day} style={styles.weekday}>
@@ -317,31 +444,60 @@ export function ExpensesScreen() {
                       <Text style={styles.calendarLink}>Открыть полный календарь</Text>
                     </Pressable>
                   </Animated.View>
+                  )}
+
+                  {/* Задняя сторона: кошелёк (кнопка слева) */}
+                  {backContent === 'wallet' && (
+                  <Animated.View
+                    style={[styles.chartCard, styles.cardBack, backAnimated]}
+                    pointerEvents={openFace ? 'auto' : 'none'}
+                  >
+                    <Text style={[styles.calendarTitle, styles.backTitle]}>Кошелёк</Text>
+                    <View style={styles.walletBody}>
+                      <View style={styles.walletIconCircle}>
+                        <Wallet color={colors.accent} size={44} />
+                      </View>
+                      <Text
+                        style={[
+                          styles.walletBalanceBig,
+                          (walletBalance?.balance ?? 0) < 0 && styles.walletBalanceNeg,
+                        ]}
+                      >
+                        {(walletBalance?.balance ?? 0).toFixed(0)} {walletBalance?.currency || categoryCurrency}
+                      </Text>
+                      <Text style={styles.walletCaption}>Баланс кошелька</Text>
+                    </View>
+                    {walletBalance && (
+                      <View style={styles.walletStrip}>
+                        <View style={styles.walletStripItem}>
+                          <View style={styles.walletStripLabelRow}>
+                            <ArrowUpCircle color={colors.success} size={14} />
+                            <Text style={styles.walletStripLabel}>Доходы</Text>
+                          </View>
+                          <Text style={styles.walletSubIncome}>
+                            +{walletBalance.totalIncome.toFixed(0)} {walletBalance.currency || categoryCurrency}
+                          </Text>
+                        </View>
+                        <View style={styles.walletStripDivider} />
+                        <View style={styles.walletStripItem}>
+                          <View style={styles.walletStripLabelRow}>
+                            <ArrowDownCircle color={colors.error} size={14} />
+                            <Text style={styles.walletStripLabel}>Расходы</Text>
+                          </View>
+                          <Text style={styles.walletSubExpense}>
+                            −{walletBalance.totalExpense.toFixed(0)} {walletBalance.currency || categoryCurrency}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </Animated.View>
+                  )}
 
                   {/* Передняя сторона: диаграмма */}
                   <Animated.View
                     style={[styles.chartCard, frontAnimated]}
-                    pointerEvents={flipped ? 'none' : 'auto'}
+                    pointerEvents={openFace ? 'none' : 'auto'}
                   >
-                    <View style={styles.cardCorner}>
-                      {hasFamilyReceipts && (
-                        <Pressable
-                          style={[styles.cornerButton, showOnlyMine && styles.cornerButtonActive]}
-                          onPress={() => setShowOnlyMine((v) => !v)}
-                          hitSlop={6}
-                        >
-                          {showOnlyMine ? (
-                            <User color={colors.background} size={18} />
-                          ) : (
-                            <Users color={colors.accent} size={18} />
-                          )}
-                        </Pressable>
-                      )}
-                      <Pressable style={styles.cornerButton} onPress={toggleFlip} hitSlop={6}>
-                        <CalendarDays color={colors.accent} size={18} />
-                      </Pressable>
-                    </View>
-
                     {chartStyle === 'donut' ? (
                       <View style={styles.donutWrap}>
                         <DonutChart
@@ -397,11 +553,48 @@ export function ExpensesScreen() {
                       ))}
                     </View>
                   </Animated.View>
+
+                  {/* Кнопки-углы поверх обеих сторон — при перевороте остаются на месте.
+                      Повторное нажатие той же кнопки возвращает диаграмму. */}
+                  <View style={styles.cardCornerLeft}>
+                    <Pressable
+                      style={[styles.cornerButton, openFace === 'wallet' && styles.cornerButtonActive]}
+                      onPress={toggleWallet}
+                      hitSlop={6}
+                    >
+                      <Wallet color={openFace === 'wallet' ? colors.background : colors.accent} size={18} />
+                    </Pressable>
+                  </View>
+                  <View style={styles.cardCorner}>
+                    {hasFamilyReceipts && (
+                      <Pressable
+                        style={[styles.cornerButton, showOnlyMine && styles.cornerButtonActive]}
+                        onPress={() => setShowOnlyMine((v) => !v)}
+                        hitSlop={6}
+                      >
+                        {showOnlyMine ? (
+                          <User color={colors.background} size={18} />
+                        ) : (
+                          <Users color={colors.accent} size={18} />
+                        )}
+                      </Pressable>
+                    )}
+                    <Pressable
+                      style={[styles.cornerButton, openFace === 'calendar' && styles.cornerButtonActive]}
+                      onPress={toggleFlip}
+                      hitSlop={6}
+                    >
+                      <CalendarDays
+                        color={openFace === 'calendar' ? colors.background : colors.accent}
+                        size={18}
+                      />
+                    </Pressable>
+                  </View>
                 </View>
               </FadeInView>
             )}
 
-            <Text style={styles.sectionTitle}>Чеки</Text>
+            <Text style={styles.sectionTitle}>{walletMode ? 'Чеки и доходы' : 'Чеки'}</Text>
           </View>
         }
       />
@@ -470,8 +663,9 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   screenTitle: {
     color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   queueBanner: {
     flexDirection: 'row',
@@ -488,13 +682,21 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   flipWrap: {
     position: 'relative',
+    borderRadius: 20,
+    // Задняя сторона (календарь) абсолютно спозиционирована и не влияет на
+    // высоту контейнера — без явного minHeight/overflow она может оказаться
+    // выше передней (диаграмма+легенда) и вылезти за скруглённые края карточки.
+    overflow: 'hidden',
   },
   chartCard: {
     backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 20,
     gap: 16,
+    minHeight: 420,
     backfaceVisibility: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   cardBack: {
     position: 'absolute',
@@ -503,6 +705,7 @@ const styles = themedStyles(() => StyleSheet.create({
     right: 0,
     bottom: 0,
     justifyContent: 'flex-start',
+    gap: 10,
   },
   cardCorner: {
     position: 'absolute',
@@ -512,10 +715,11 @@ const styles = themedStyles(() => StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  cardCornerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  cardCornerLeft: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    zIndex: 2,
   },
   cornerButton: {
     width: 34,
@@ -533,6 +737,10 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Заголовок задней стороны по центру — по углам лежат общие кнопки карточки.
+  backTitle: {
+    textAlign: 'center',
+  },
   weekRow: {
     flexDirection: 'row',
   },
@@ -547,9 +755,12 @@ const styles = themedStyles(() => StyleSheet.create({
     flexWrap: 'wrap',
   },
   dayCell: {
+    // Фиксированная высота вместо aspectRatio: на широких экранах (iPad —
+    // ios.supportsTablet:true) карточка шире, и квадратные ячейки по ширине
+    // колонки становились огромными, вылезая за рамки карточки календаря.
     width: `${100 / 7}%`,
-    aspectRatio: 0.8,
-    padding: 2,
+    height: 36,
+    padding: 1,
   },
   dayInner: {
     flex: 1,
@@ -654,6 +865,112 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginTop: 4,
+  },
+  walletBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  walletIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  walletBalanceBig: {
+    color: colors.success,
+    fontSize: 32,
+    fontWeight: '700',
+  },
+  walletBalanceNeg: {
+    color: colors.error,
+  },
+  walletCaption: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  walletStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  walletStripItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  walletStripLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  walletStripLabel: {
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  walletStripDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: colors.border,
+  },
+  walletSubIncome: {
+    color: colors.success,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  walletSubExpense: {
+    color: colors.error,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  incomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  incomeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  incomeInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  incomeNote: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  incomeDate: {
+    color: colors.textTertiary,
+    fontSize: 12,
+  },
+  incomeAmount: {
+    color: colors.success,
+    fontSize: 14,
+    fontWeight: '700',
   },
   backdrop: {
     flex: 1,

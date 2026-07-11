@@ -1,6 +1,14 @@
-import { DarkTheme, DefaultTheme, NavigationContainer, type Theme } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  type LinkingOptions,
+  type Theme,
+} from '@react-navigation/native';
+import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import type { AppStackParamList } from './types';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useThemeStore } from '../store/themeStore';
@@ -9,6 +17,20 @@ import { AppStack } from './AppStack';
 import { AuthNavigator } from './AuthNavigator';
 import { OnboardingNavigator } from './OnboardingNavigator';
 import { themedStyles } from '../theme/themedStyles';
+
+// Deep link: aiphone://scan открывает сканер напрямую — для «Касания задней
+// панели» iPhone (Back Tap → быстрая команда «Открыть URL»).
+const linking: LinkingOptions<AppStackParamList> = {
+  prefixes: [Linking.createURL('/'), 'aiphone://'],
+  config: {
+    // При холодном старте по ссылке под сканером остаются табы,
+    // чтобы «назад» вёл на Главную, а не закрывал приложение.
+    initialRouteName: 'Tabs',
+    screens: {
+      Scan: 'scan',
+    },
+  },
+};
 
 // Считается на каждый рендер: после смены темы (ремоунт по key в App)
 // подхватывает актуальную палитру.
@@ -75,7 +97,11 @@ export function RootNavigator() {
     return <AppStack />;
   }
 
-  return <NavigationContainer theme={buildNavigationTheme()}>{renderContent()}</NavigationContainer>;
+  return (
+    <NavigationContainer theme={buildNavigationTheme()} linking={linking}>
+      {renderContent()}
+    </NavigationContainer>
+  );
 }
 
 const styles = themedStyles(() => StyleSheet.create({

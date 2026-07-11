@@ -3,6 +3,7 @@
     "name": "aiphone",
     "slug": "aiphone",
     "version": "1.0.0",
+    "scheme": "aiphone",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",

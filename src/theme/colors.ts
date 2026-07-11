@@ -1,31 +1,42 @@
 export type ThemeName = 'dark' | 'light';
 
 const darkPalette = {
-  background: '#0A0A0C',
-  surface: '#17171A',
-  surfaceElevated: '#212126',
-  border: '#2A2A2E',
+  // Глубокий сине-чёрный фон вместо плоского серого — карточки «подсвечиваются».
+  background: '#07090E',
+  surface: '#12151C',
+  surfaceElevated: '#1B1F29',
+  border: '#242A37',
+  // Тонкая рамка-волосок для карточек (едва заметный контур).
+  cardBorder: 'rgba(148,163,184,0.10)',
   accent: '#34D399',
+  // Пара к акценту для градиентов (кнопки, hero-карточки).
+  accentAlt: '#22D3EE',
   accentSoft: 'rgba(52,211,153,0.14)',
+  heroFrom: 'rgba(52,211,153,0.16)',
+  heroTo: 'rgba(34,211,238,0.04)',
   warning: '#F59E0B',
   error: '#EF4444',
   success: '#22C55E',
-  textPrimary: '#F5F5F5',
+  textPrimary: '#F6F7F9',
   textSecondary: '#9CA3AF',
   textTertiary: '#6B7280',
 };
 
 const lightPalette: typeof darkPalette = {
-  background: '#F5F6F8',
+  background: '#F4F6F9',
   surface: '#FFFFFF',
-  surfaceElevated: '#ECEEF1',
-  border: '#E2E5E9',
+  surfaceElevated: '#EDF0F4',
+  border: '#E2E5EB',
+  cardBorder: 'rgba(15,23,42,0.08)',
   accent: '#0EA870',
+  accentAlt: '#0891B2',
   accentSoft: 'rgba(14,168,112,0.12)',
+  heroFrom: 'rgba(14,168,112,0.14)',
+  heroTo: 'rgba(8,145,178,0.04)',
   warning: '#D97706',
   error: '#DC2626',
   success: '#16A34A',
-  textPrimary: '#111318',
+  textPrimary: '#101319',
   textSecondary: '#5B6270',
   textTertiary: '#9AA1AC',
 };

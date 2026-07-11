@@ -26,14 +26,15 @@ const styles = themedStyles(() => StyleSheet.create({
   label: {
     color: colors.textSecondary,
     fontSize: 13,
+    fontWeight: '500',
   },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 13,
     color: colors.textPrimary,
     fontSize: 16,
   },

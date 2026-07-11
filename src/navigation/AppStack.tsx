@@ -5,6 +5,7 @@ import { CategoryDetailScreen } from '../screens/category/CategoryDetailScreen';
 import { CategoriesScreen } from '../screens/categories/CategoriesScreen';
 import { FamilyScreen } from '../screens/family/FamilyScreen';
 import { NewTemplateScreen } from '../screens/shopping/NewTemplateScreen';
+import { AddIncomeScreen } from '../screens/income/AddIncomeScreen';
 import { LimitsScreen } from '../screens/limits/LimitsScreen';
 import { ProductScreen } from '../screens/product/ProductScreen';
 import { ReceiptDetailScreen } from '../screens/receiptDetail/ReceiptDetailScreen';
@@ -34,6 +35,7 @@ export function AppStack() {
       <Stack.Screen name="Category" component={CategoryDetailScreen} />
       <Stack.Screen name="Family" component={FamilyScreen} />
       <Stack.Screen name="NewTemplate" component={NewTemplateScreen} />
+      <Stack.Screen name="AddIncome" component={AddIncomeScreen} />
     </Stack.Navigator>
   );
 }

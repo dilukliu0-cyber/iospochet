@@ -41,3 +41,6 @@ yarn-error.*
 /ios
 /android
 supabase/.temp/
+
+# Claude Code local settings
+.claude/

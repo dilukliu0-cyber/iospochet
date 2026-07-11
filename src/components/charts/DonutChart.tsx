@@ -96,8 +96,9 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   centerTop: {
     color: colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 25,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   centerBottom: {
     color: colors.textSecondary,

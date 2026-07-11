@@ -92,6 +92,8 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 12,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
   thumbnailWrap: {
     width: 48,

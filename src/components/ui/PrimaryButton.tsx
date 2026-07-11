@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { colors } from '../../theme/colors';
 import { themedStyles } from '../../theme/themedStyles';
@@ -12,34 +13,60 @@ type Props = {
 
 export function PrimaryButton({ label, onPress, loading, disabled, variant = 'primary' }: Props) {
   const isSecondary = variant === 'secondary';
+
+  if (isSecondary) {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={[styles.button, styles.secondary, (disabled || loading) && styles.disabled]}
+      >
+        {loading ? (
+          <ActivityIndicator color={colors.accent} />
+        ) : (
+          <Text style={styles.secondaryLabel}>{label}</Text>
+        )}
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      style={[
-        styles.button,
-        isSecondary ? styles.secondary : styles.primary,
-        (disabled || loading) && styles.disabled,
-      ]}
+      style={[styles.glow, (disabled || loading) && styles.disabled]}
     >
-      {loading ? (
-        <ActivityIndicator color={isSecondary ? colors.accent : colors.background} />
-      ) : (
-        <Text style={isSecondary ? styles.secondaryLabel : styles.primaryLabel}>{label}</Text>
-      )}
+      <LinearGradient
+        colors={[colors.accent, colors.accentAlt]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.button}
+      >
+        {loading ? (
+          <ActivityIndicator color={colors.background} />
+        ) : (
+          <Text style={styles.primaryLabel}>{label}</Text>
+        )}
+      </LinearGradient>
     </Pressable>
   );
 }
 
 const styles = themedStyles(() => StyleSheet.create({
   button: {
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primary: {
-    backgroundColor: colors.accent,
+  // Мягкое свечение под градиентной кнопкой.
+  glow: {
+    borderRadius: 16,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
   secondary: {
     backgroundColor: 'transparent',
@@ -50,7 +77,7 @@ const styles = themedStyles(() => StyleSheet.create({
   primaryLabel: {
     color: colors.background,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   secondaryLabel: {
     color: colors.accent,
