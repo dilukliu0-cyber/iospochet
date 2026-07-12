@@ -20,6 +20,7 @@ import { colors } from '../../theme/colors';
 import type { ChatMessage } from '../../types/chatMessage';
 import type { ReceiptRecord } from '../../types/receiptRecord';
 import { themedStyles } from '../../theme/themedStyles';
+import { haptics } from '../../utils/haptics';
 
 type Attached = { id: string; label: string };
 
@@ -70,6 +71,7 @@ export function ChatScreen() {
 
   async function handleSend() {
     if (!userId || !text.trim() || isSending) return;
+    haptics.light();
     const toSend = text;
     const attachment = attached;
     setText('');
@@ -131,8 +133,9 @@ export function ChatScreen() {
           !isLoadingHistory ? (
             <View style={styles.emptyWrap}>
               <Text style={styles.emptyText}>
-                Привет! Спросите, например: «Сколько я потратил в этом месяце?» или прикрепите конкретный чек кнопкой
-                скрепки снизу, чтобы спросить про него.
+                Привет! Спросите, например: «Сколько я потратил в этом месяце?», попросите «сделай список для
+                лазаньи» — товары появятся в Покупках и я пришлю рецепт, или прикрепите конкретный чек кнопкой
+                скрепки снизу.
               </Text>
             </View>
           ) : null
@@ -194,9 +197,7 @@ export function ChatScreen() {
                 ListEmptyComponent={<Text style={styles.emptyText}>Чеков пока нет.</Text>}
                 renderItem={({ item }) => (
                   <Pressable style={styles.pickerRow} onPress={() => pickReceipt(item)}>
-                    <View style={styles.pickerIcon}>
-                      <ReceiptIcon color={colors.accent} size={18} />
-                    </View>
+                    <ReceiptIcon color={colors.accent} size={20} strokeWidth={1.75} />
                     <View style={styles.pickerInfo}>
                       <Text style={styles.pickerStore}>{item.store_name || 'Магазин не распознан'}</Text>
                       <Text style={styles.pickerDate}>
@@ -430,14 +431,6 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: colors.surfaceElevated,
     borderRadius: 14,
     padding: 12,
-  },
-  pickerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   pickerInfo: {
     flex: 1,

@@ -5,6 +5,8 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   CloudUpload,
   PlusCircle,
   Send,
@@ -29,8 +31,10 @@ import {
 import { DonutChart, type DonutSegment } from '../../components/charts/DonutChart';
 import { ReceiptListItem } from '../../components/cards/ReceiptListItem';
 import { ReceiptQuickActions } from '../../components/modals/ReceiptQuickActions';
+import { AnimatedNumber } from '../../components/ui/AnimatedNumber';
 import { FadeInView } from '../../components/ui/FadeInView';
 import { ScreenPlaceholder } from '../../components/ui/ScreenPlaceholder';
+import { Skeleton } from '../../components/ui/Skeleton';
 import type { AppStackParamList } from '../../navigation/types';
 import {
   fetchMonthlyCategoryBreakdown,
@@ -41,6 +45,7 @@ import { avatarUrl } from '../../services/profile/avatarService';
 import { submitScan } from '../../services/receipts/backgroundScan';
 import { deleteReceipt } from '../../services/receipts/receiptsService';
 import { deleteIncome, fetchIncomes, fetchWalletBalance } from '../../services/wallet/walletService';
+import { updateExpensesWidget } from '../../services/widget/expensesWidget';
 import { useAuthStore } from '../../store/authStore';
 import { useReceiptsStore } from '../../store/receiptsStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -49,6 +54,7 @@ import { colors, getCategoryColor } from '../../theme/colors';
 import type { IncomeRecord } from '../../types/income';
 import type { ReceiptRecord } from '../../types/receiptRecord';
 import { themedStyles } from '../../theme/themedStyles';
+import { haptics } from '../../utils/haptics';
 
 type FeedEntry =
   | { kind: 'receipt'; id: string; sortDate: string; receipt: ReceiptRecord }
@@ -94,6 +100,21 @@ export function ExpensesScreen() {
   const [backContent, setBackContent] = useState<'calendar' | 'wallet'>('calendar');
   const walletMode = openFace === 'wallet';
 
+  // Мини-календарь сразу «полный» — переключение месяцев прямо тут, без
+  // перехода на отдельный экран.
+  const today = new Date();
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth());
+  // Тап по дню с расходами — фильтрует список чеков ниже этим днём.
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+
+  function shiftCalMonth(delta: number) {
+    const d = new Date(calYear, calMonth + delta, 1);
+    setCalYear(d.getFullYear());
+    setCalMonth(d.getMonth());
+    setSelectedDay(null);
+  }
+
   function loadCategories() {
     if (!userId) return;
     // Диаграмма должна совпадать со списком чеков ниже: без фильтра — вместе
@@ -101,6 +122,7 @@ export function ExpensesScreen() {
     fetchMonthlyCategoryBreakdown(userId, new Date(), !showOnlyMine).then(({ entries, currency }) => {
       setCategories(entries);
       setCategoryCurrency(currency);
+      updateExpensesWidget(entries, currency, 'Всего за месяц');
     });
   }
 
@@ -135,6 +157,7 @@ export function ExpensesScreen() {
   }
 
   function toggleFlip() {
+    haptics.light();
     if (openFace === 'calendar') {
       setOpenFace(null);
       animateFlip(0);
@@ -152,6 +175,7 @@ export function ExpensesScreen() {
   }
 
   function toggleWallet() {
+    haptics.light();
     if (openFace === 'wallet') {
       setOpenFace(null);
       animateFlip(0);
@@ -255,12 +279,19 @@ export function ExpensesScreen() {
     sortDate: r.purchase_date ?? r.created_at,
     receipt: r,
   }));
-  const feedItems: FeedEntry[] = walletMode
+  const feedItemsAll: FeedEntry[] = walletMode
     ? [
         ...receiptEntries,
         ...incomes.map((i): FeedEntry => ({ kind: 'income', id: i.id, sortDate: i.created_at, income: i })),
       ].sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
     : receiptEntries;
+  const feedItems: FeedEntry[] =
+    selectedDay !== null
+      ? feedItemsAll.filter((item) => {
+          const d = new Date(item.sortDate);
+          return d.getFullYear() === calYear && d.getMonth() === calMonth && d.getDate() === selectedDay;
+        })
+      : feedItemsAll;
 
   if (!isLoading && receipts.length === 0 && pendingScans.length === 0) {
     return (
@@ -269,6 +300,23 @@ export function ExpensesScreen() {
         title="Расходы"
         description="Здесь появятся ваши чеки — отсканируйте первый с Главной."
       />
+    );
+  }
+
+  if (isLoading && receipts.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.listContent}>
+          <View style={styles.header}>
+            <Text style={styles.screenTitle}>Расходы</Text>
+          </View>
+          <Skeleton width="100%" height={220} borderRadius={22} />
+          <Skeleton width={70} height={15} style={{ marginTop: 20, marginBottom: 10 }} />
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} width="100%" height={72} borderRadius={16} style={{ marginBottom: 10 }} />
+          ))}
+        </View>
+      </View>
     );
   }
 
@@ -281,22 +329,22 @@ export function ExpensesScreen() {
   const chartStyle = settings?.chart_style ?? 'donut';
   const maxCategoryTotal = Math.max(...categories.map((c) => c.total), 1);
 
-  // Мини-календарь текущего месяца для обратной стороны карточки — сумма
-  // сразу видна в ячейке, без дополнительного тапа.
-  const now = new Date();
+  // Мини-календарь на обратной стороне карточки — уже «полный»: месяц
+  // переключается стрелками прямо тут, сумма видна в ячейке без тапа.
   const dailyTotals = new Map<number, number>();
   for (const r of visibleReceipts) {
     const d = r.purchase_date ? new Date(r.purchase_date) : new Date(r.created_at);
-    if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) continue;
+    if (d.getFullYear() !== calYear || d.getMonth() !== calMonth) continue;
     const amount = (r.total_amount ?? 0) * (r.exchange_rate ?? 1);
     dailyTotals.set(d.getDate(), (dailyTotals.get(d.getDate()) ?? 0) + amount);
   }
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const firstWeekday = (new Date(now.getFullYear(), now.getMonth(), 1).getDay() + 6) % 7; // Пн=0
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const firstWeekday = (new Date(calYear, calMonth, 1).getDay() + 6) % 7; // Пн=0
   const calendarCells: (number | null)[] = [
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
+  const isCurrentMonth = calYear === today.getFullYear() && calMonth === today.getMonth();
 
   // Календарь открывается поворотом вправо (0→1), кошелёк — влево (0→−1).
   const frontAnimated = {
@@ -335,9 +383,7 @@ export function ExpensesScreen() {
                   style={styles.incomeRow}
                   onLongPress={() => handleIncomeLongPress(item.income)}
                 >
-                  <View style={styles.incomeIcon}>
-                    <PlusCircle color={colors.success} size={20} />
-                  </View>
+                  <PlusCircle color={colors.success} size={24} strokeWidth={1.75} />
                   <View style={styles.incomeInfo}>
                     <Text style={styles.incomeNote} numberOfLines={1}>
                       {item.income.note?.trim() || 'Доход'}
@@ -403,8 +449,8 @@ export function ExpensesScreen() {
                     style={[styles.chartCard, styles.cardBack, backAnimated]}
                     pointerEvents={openFace ? 'auto' : 'none'}
                   >
-                    <Text style={[styles.calendarTitle, styles.backTitle]}>
-                      {MONTH_NAMES[now.getMonth()]} {now.getFullYear()}
+                    <Text style={[styles.calendarTitle, styles.calendarNavTitle]}>
+                      {MONTH_NAMES[calMonth]} {calYear}
                     </Text>
                     <View style={styles.weekRow}>
                       {WEEKDAYS.map((day) => (
@@ -419,30 +465,51 @@ export function ExpensesScreen() {
                         return (
                           <View key={i} style={styles.dayCell}>
                             {day !== null && (
-                              <View
+                              <Pressable
+                                disabled={total === undefined}
+                                onPress={() => {
+                                  haptics.selection();
+                                  setSelectedDay((prev) => (prev === day ? null : day));
+                                }}
                                 style={[
                                   styles.dayInner,
                                   total !== undefined && styles.daySpent,
-                                  day === now.getDate() && styles.dayToday,
+                                  isCurrentMonth && day === today.getDate() && styles.dayToday,
+                                  selectedDay === day && styles.daySelected,
                                 ]}
                               >
-                                <Text style={[styles.dayText, total !== undefined && styles.dayTextSpent]}>
+                                <Text
+                                  style={[
+                                    styles.dayText,
+                                    total !== undefined && styles.dayTextSpent,
+                                    selectedDay === day && styles.dayTextSelected,
+                                  ]}
+                                >
                                   {day}
                                 </Text>
                                 {total !== undefined && (
-                                  <Text style={styles.daySpentAmount} numberOfLines={1}>
+                                  <Text
+                                    style={[styles.daySpentAmount, selectedDay === day && styles.dayTextSelected]}
+                                    numberOfLines={1}
+                                  >
                                     {total.toFixed(0)}
                                   </Text>
                                 )}
-                              </View>
+                              </Pressable>
                             )}
                           </View>
                         );
                       })}
                     </View>
-                    <Pressable onPress={() => rootNav()?.navigate('Calendar')}>
-                      <Text style={styles.calendarLink}>Открыть полный календарь</Text>
-                    </Pressable>
+                    {/* Переключение месяца — снизу, а не сверху над заголовком. */}
+                    <View style={styles.calendarNavRow}>
+                      <Pressable onPress={() => shiftCalMonth(-1)} hitSlop={8} style={styles.calendarNavButton}>
+                        <ChevronLeft color={colors.textPrimary} size={18} />
+                      </Pressable>
+                      <Pressable onPress={() => shiftCalMonth(1)} hitSlop={8} style={styles.calendarNavButton}>
+                        <ChevronRight color={colors.textPrimary} size={18} />
+                      </Pressable>
+                    </View>
                   </Animated.View>
                   )}
 
@@ -457,14 +524,14 @@ export function ExpensesScreen() {
                       <View style={styles.walletIconCircle}>
                         <Wallet color={colors.accent} size={44} />
                       </View>
-                      <Text
+                      <AnimatedNumber
+                        value={walletBalance?.balance ?? 0}
+                        formatter={(n) => `${n.toFixed(0)} ${walletBalance?.currency || categoryCurrency}`}
                         style={[
                           styles.walletBalanceBig,
                           (walletBalance?.balance ?? 0) < 0 && styles.walletBalanceNeg,
                         ]}
-                      >
-                        {(walletBalance?.balance ?? 0).toFixed(0)} {walletBalance?.currency || categoryCurrency}
-                      </Text>
+                      />
                       <Text style={styles.walletCaption}>Баланс кошелька</Text>
                     </View>
                     {walletBalance && (
@@ -493,7 +560,11 @@ export function ExpensesScreen() {
                   </Animated.View>
                   )}
 
-                  {/* Передняя сторона: диаграмма */}
+                  {/* Передняя сторона: диаграмма.
+                      Блюр тут не годится: на web backdrop-filter «протекает»
+                      через все грани флип-карточки (они наложены друг на
+                      друга в одном контейнере) — размывало и календарь, и
+                      кошелёк на обратной стороне. Оставляем плоскую заливку. */}
                   <Animated.View
                     style={[styles.chartCard, frontAnimated]}
                     pointerEvents={openFace ? 'none' : 'auto'}
@@ -504,15 +575,18 @@ export function ExpensesScreen() {
                           segments={segments}
                           size={200}
                           strokeWidth={26}
-                          centerTop={`${monthTotal.toFixed(0)} ${categoryCurrency}`}
+                          centerValue={monthTotal}
+                          centerFormatter={(n) => `${n.toFixed(0)} ${categoryCurrency}`}
                           centerBottom="Всего"
                         />
                       </View>
                     ) : (
                       <View style={styles.barsWrap}>
-                        <Text style={styles.barsTotal}>
-                          {monthTotal.toFixed(0)} {categoryCurrency}
-                        </Text>
+                        <AnimatedNumber
+                          value={monthTotal}
+                          formatter={(n) => `${n.toFixed(0)} ${categoryCurrency}`}
+                          style={styles.barsTotal}
+                        />
                         <Text style={styles.barsTotalSub}>Всего за месяц</Text>
                       </View>
                     )}
@@ -569,7 +643,10 @@ export function ExpensesScreen() {
                     {hasFamilyReceipts && (
                       <Pressable
                         style={[styles.cornerButton, showOnlyMine && styles.cornerButtonActive]}
-                        onPress={() => setShowOnlyMine((v) => !v)}
+                        onPress={() => {
+                          haptics.selection();
+                          setShowOnlyMine((v) => !v);
+                        }}
                         hitSlop={6}
                       >
                         {showOnlyMine ? (
@@ -594,7 +671,20 @@ export function ExpensesScreen() {
               </FadeInView>
             )}
 
-            <Text style={styles.sectionTitle}>{walletMode ? 'Чеки и доходы' : 'Чеки'}</Text>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>
+                {selectedDay !== null
+                  ? `${selectedDay} ${MONTH_NAMES[calMonth].toLowerCase()}`
+                  : walletMode
+                    ? 'Чеки и доходы'
+                    : 'Чеки'}
+              </Text>
+              {selectedDay !== null && (
+                <Pressable onPress={() => setSelectedDay(null)} hitSlop={8} style={styles.dayFilterClear}>
+                  <Text style={styles.dayFilterClearText}>Показать все</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         }
       />
@@ -741,6 +831,20 @@ const styles = themedStyles(() => StyleSheet.create({
   backTitle: {
     textAlign: 'center',
   },
+  calendarNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  calendarNavTitle: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  calendarNavButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   weekRow: {
     flexDirection: 'row',
   },
@@ -776,6 +880,9 @@ const styles = themedStyles(() => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.accent,
   },
+  daySelected: {
+    backgroundColor: colors.accent,
+  },
   dayText: {
     color: colors.textSecondary,
     fontSize: 11,
@@ -789,11 +896,8 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 8,
     fontWeight: '700',
   },
-  calendarLink: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
+  dayTextSelected: {
+    color: colors.background,
   },
   donutWrap: {
     alignItems: 'center',
@@ -860,11 +964,27 @@ const styles = themedStyles(() => StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
   sectionTitle: {
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
-    marginTop: 4,
+  },
+  dayFilterClear: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: colors.accentSoft,
+  },
+  dayFilterClearText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
   },
   walletBody: {
     flex: 1,
@@ -945,14 +1065,6 @@ const styles = themedStyles(() => StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-  },
-  incomeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   incomeInfo: {
     flex: 1,

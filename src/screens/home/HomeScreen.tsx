@@ -1,27 +1,28 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { PenLine, ScanLine, ShieldCheck, Sparkles, User, Users, WalletCards } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Sparkline } from '../../components/charts/Sparkline';
-import { AddWidgetSheet } from '../../components/modals/AddWidgetSheet';
+import { DailyBarChart } from '../../components/charts/DailyBarChart';
+import { LineChart } from '../../components/charts/LineChart';
 import { CategoryIcon } from '../../components/ui/CategoryIcon';
 import { FadeInView } from '../../components/ui/FadeInView';
-import { HomeWidgetCard } from '../../components/widgets/HomeWidgetCard';
+import { Skeleton } from '../../components/ui/Skeleton';
 import type { AppStackParamList } from '../../navigation/types';
 import { fetchMonthlyCategoryBreakdown } from '../../services/analytics/categoryBreakdown';
 import { checkAiDigest } from '../../services/ai/aiDigest';
 import { avatarUrl } from '../../services/profile/avatarService';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useAuthStore } from '../../store/authStore';
-import { useHomeWidgetsStore } from '../../store/homeWidgetsStore';
 import { useLimitsStore } from '../../store/limitsStore';
 import { useReceiptsStore } from '../../store/receiptsStore';
-import { colors } from '../../theme/colors';
+import { AnimatedNumber } from '../../components/ui/AnimatedNumber';
+import { AnimatedProgressBar } from '../../components/ui/AnimatedProgressBar';
+import { colors, progressColor } from '../../theme/colors';
 import type { ReceiptRecord } from '../../types/receiptRecord';
 import { themedStyles } from '../../theme/themedStyles';
+import { haptics } from '../../utils/haptics';
 
 const MONTH_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -38,37 +39,33 @@ export function HomeScreen() {
   const userId = useAuthStore((state) => state.session?.user.id);
   const settings = useSettingsStore((state) => state.settings);
   const nickname = settings?.nickname?.trim() ?? '';
+  const homeChart = settings?.home_chart ?? 'line';
   const avatar = avatarUrl(settings?.avatar_path ?? null, settings?.updated_at);
   const receipts = useReceiptsStore((state) => state.receipts);
+  const receiptsLoading = useReceiptsStore((state) => state.isLoading);
   const fetchReceipts = useReceiptsStore((state) => state.fetch);
-  const widgets = useHomeWidgetsStore((state) => state.widgets);
-  const fetchWidgets = useHomeWidgetsStore((state) => state.fetch);
   const limits = useLimitsStore((state) => state.limits);
+  const limitsLoading = useLimitsStore((state) => state.isLoading);
   const fetchLimits = useLimitsStore((state) => state.fetch);
+  // Первая загрузка (ещё нет ни чеков, ни лимитов) — показываем skeleton
+  // вместо пустой карточки, которая на миг мелькает перед данными.
+  const isFirstLoad = (receiptsLoading || limitsLoading) && receipts.length === 0 && limits.length === 0;
 
   const [spentByCategory, setSpentByCategory] = useState<Record<string, number>>({});
-  const [topCategories, setTopCategories] = useState<
-    { categoryName: string; total: number; percent: number }[]
-  >([]);
-  const [categoryCurrency, setCategoryCurrency] = useState('');
-  const [addWidgetVisible, setAddWidgetVisible] = useState(false);
   const [showOnlyMine, setShowOnlyMine] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
       fetchReceipts(userId);
-      fetchWidgets(userId);
       fetchLimits(userId);
-      fetchMonthlyCategoryBreakdown(userId).then(({ entries, currency: cur }) => {
+      fetchMonthlyCategoryBreakdown(userId).then(({ entries }) => {
         const map: Record<string, number> = {};
         entries.forEach((e) => (map[e.categoryName] = e.total));
         setSpentByCategory(map);
-        setTopCategories(entries.slice(0, 5));
-        setCategoryCurrency(cur);
       });
       checkAiDigest();
-    }, [userId, fetchReceipts, fetchWidgets, fetchLimits]),
+    }, [userId, fetchReceipts, fetchLimits]),
   );
 
   const now = new Date();
@@ -128,16 +125,25 @@ export function HomeScreen() {
     return tips.slice(0, 3);
   }, [limits, spentByCategory, changePercent]);
 
+  // Ближайшие к превышению лимиты — самое важное про бюджет на главном
+  // экране (детали по категориям уже есть на вкладке «Расходы»).
+  const topLimits = useMemo(() => {
+    return limits
+      .map((limit) => {
+        const spent = spentByCategory[limit.category_name] ?? 0;
+        return { ...limit, spent, percent: limit.amount > 0 ? (spent / limit.amount) * 100 : 0 };
+      })
+      .sort((a, b) => b.percent - a.percent)
+      .slice(0, 3);
+  }, [limits, spentByCategory]);
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}
     >
       <View style={styles.headerRow}>
-        <Pressable onLongPress={() => setAddWidgetVisible(true)}>
-          <Text style={styles.greeting}>👋 Привет{nickname ? `, ${nickname}` : ''}!</Text>
-          <Text style={styles.greetingSub}>Отличного дня! Вот что происходит:</Text>
-        </Pressable>
+        <Text style={styles.greeting}>Главная</Text>
         <View style={styles.headerRight}>
           {avatar ? (
             <Image source={{ uri: avatar }} style={styles.avatarImage} />
@@ -169,145 +175,174 @@ export function HomeScreen() {
         </FadeInView>
       )}
 
-      <FadeInView index={1}>
-        <LinearGradient
-          colors={[colors.heroFrom, colors.heroTo]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.spendCard}
-        >
-          <View style={styles.spendHeader}>
-            <Text style={styles.spendLabel}>Расходы за {periodLabel}</Text>
-            <View style={styles.spendHeaderRight}>
-              {changePercent !== null && (
-                <View style={[styles.badge, changePercent <= 0 ? styles.badgeGood : styles.badgeBad]}>
-                  <Text style={[styles.badgeText, changePercent <= 0 ? styles.badgeTextGood : styles.badgeTextBad]}>
-                    {changePercent > 0 ? '+' : ''}
-                    {changePercent}%
-                  </Text>
-                </View>
-              )}
-              {hasFamilyReceipts && (
-                <Pressable
-                  style={[styles.familyToggle, showOnlyMine && styles.familyToggleActive]}
-                  onPress={() => setShowOnlyMine((v) => !v)}
-                  hitSlop={6}
-                >
-                  {showOnlyMine ? (
-                    <User color={colors.background} size={14} />
-                  ) : (
-                    <Users color={colors.accent} size={14} />
-                  )}
-                </Pressable>
-              )}
-            </View>
+      {isFirstLoad ? (
+        <FadeInView index={1}>
+          <View style={styles.spendCard}>
+            <Skeleton width={140} height={13} />
+            <Skeleton width={180} height={34} style={{ marginTop: 10 }} />
+            <Skeleton width="100%" height={150} borderRadius={12} style={{ marginTop: 14 }} />
           </View>
-          <Text style={styles.spendTotal}>
-            {total.toFixed(2)} {currency}
-          </Text>
-          {changePercent !== null && (
-            <Text style={styles.spendSub}>
-              {changePercent <= 0 ? 'Меньше' : 'Больше'} на {Math.abs(changePercent)}%, чем в прошлом месяце
-            </Text>
-          )}
-          {dailySeries.length >= 2 && (
-            <View style={styles.chartWrap}>
-              <Sparkline data={dailySeries} width={300} height={72} />
+        </FadeInView>
+      ) : (
+        <FadeInView index={1}>
+          <View style={styles.spendCard}>
+            <View style={styles.spendHeader}>
+              <Text style={styles.spendLabel}>Расходы за {periodLabel}</Text>
+              <View style={styles.spendHeaderRight}>
+                {changePercent !== null && (
+                  <View style={[styles.badge, changePercent <= 0 ? styles.badgeGood : styles.badgeBad]}>
+                    <Text style={[styles.badgeText, changePercent <= 0 ? styles.badgeTextGood : styles.badgeTextBad]}>
+                      {changePercent > 0 ? '+' : ''}
+                      {changePercent}%
+                    </Text>
+                  </View>
+                )}
+                {hasFamilyReceipts && (
+                  <Pressable
+                    style={[styles.familyToggle, showOnlyMine && styles.familyToggleActive]}
+                    onPress={() => {
+                      haptics.selection();
+                      setShowOnlyMine((v) => !v);
+                    }}
+                    hitSlop={6}
+                  >
+                    {showOnlyMine ? (
+                      <User color={colors.background} size={14} />
+                    ) : (
+                      <Users color={colors.accent} size={14} />
+                    )}
+                  </Pressable>
+                )}
+              </View>
             </View>
-          )}
-        </LinearGradient>
-      </FadeInView>
-
-      <FadeInView index={2}>
-        <Text style={styles.sectionTitle}>Быстрые действия</Text>
-        <View style={styles.actionsRow}>
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Scan')}
-          >
-            <View style={styles.actionIconChip}>
-              <ScanLine color={colors.accent} size={18} />
-            </View>
-            <Text style={styles.actionLabel}>Сканировать чек</Text>
-          </Pressable>
-          <Pressable
-            style={styles.actionButton}
-            onPress={() =>
-              navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('AddExpense')
-            }
-          >
-            <View style={styles.actionIconChip}>
-              <PenLine color={colors.accent} size={18} />
-            </View>
-            <Text style={styles.actionLabel}>Добавить вручную</Text>
-          </Pressable>
-        </View>
-        <Pressable
-          style={styles.incomeButton}
-          onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('AddIncome')}
-        >
-          <View style={styles.actionIconChip}>
-            <WalletCards color={colors.accent} size={18} />
-          </View>
-          <Text style={styles.limitsButtonLabel}>Добавить доход</Text>
-        </Pressable>
-        <Pressable
-          style={styles.limitsButton}
-          onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Limits')}
-        >
-          <View style={styles.actionIconChip}>
-            <ShieldCheck color={colors.accent} size={18} />
-          </View>
-          <Text style={styles.limitsButtonLabel}>Лимиты и бюджет</Text>
-        </Pressable>
-      </FadeInView>
-
-      {topCategories.length > 0 && (
-        <FadeInView index={3}>
-          <Text style={styles.sectionTitle}>Топ-5 категорий</Text>
-          <View style={styles.topCategories}>
-            {topCategories.map((entry) => (
-              <Pressable
-                key={entry.categoryName}
-                style={styles.categoryRow}
-                onPress={() =>
-                  navigation
-                    .getParent<NativeStackNavigationProp<AppStackParamList>>()
-                    ?.navigate('Category', { categoryName: entry.categoryName })
-                }
-              >
-                <CategoryIcon category={entry.categoryName} size={36} />
-                <Text style={styles.categoryName}>{entry.categoryName}</Text>
-                <Text style={styles.categoryAmount}>
-                  {entry.total.toFixed(0)} {categoryCurrency}
-                </Text>
-                <Text style={styles.categoryPercent}>{entry.percent.toFixed(0)}%</Text>
-              </Pressable>
-            ))}
+            <AnimatedNumber
+              value={total}
+              formatter={(n) => `${n.toFixed(2)} ${currency}`}
+              style={styles.spendTotal}
+            />
+            {changePercent !== null && (
+              <Text style={styles.spendSub}>
+                {changePercent <= 0 ? 'Меньше' : 'Больше'} на {Math.abs(changePercent)}%, чем в прошлом месяце
+              </Text>
+            )}
+            {/* График в самой карточке расходов и меняется по настройке
+                (линия «Динамика» или столбцы «По дням»). */}
+            {dailySeries.length >= 2 && (
+              <View style={styles.chartWrap}>
+                {homeChart === 'daily' ? (
+                  <DailyBarChart data={dailySeries} height={150} />
+                ) : (
+                  <LineChart data={dailySeries} height={150} />
+                )}
+              </View>
+            )}
           </View>
         </FadeInView>
       )}
 
-      {widgets.length > 0 && (
-        <View style={styles.widgetsSection}>
-          {widgets.map((widget) => (
-            <HomeWidgetCard key={widget.id} widget={widget} />
-          ))}
-        </View>
-      )}
+      <FadeInView index={2}>
+        {/* Один явный главный жест (скан) + три равных второстепенных —
+            вместо четырёх одинаковых по весу кнопок подряд. */}
+        <Pressable
+          style={[styles.scanGlow, styles.scanButton]}
+          onPress={() => {
+            haptics.medium();
+            navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Scan');
+          }}
+        >
+          <ScanLine color={colors.background} size={20} />
+          <Text style={styles.scanButtonLabel}>Сканировать чек</Text>
+        </Pressable>
 
-      {receipts.length === 0 && (
+        <View style={styles.tileRow}>
+          <Pressable
+            style={styles.tileButton}
+            onPress={() => {
+              haptics.light();
+              navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('AddExpense');
+            }}
+          >
+            <PenLine color={colors.accent} size={20} strokeWidth={1.75} />
+            <Text style={styles.tileLabel}>Вручную</Text>
+          </Pressable>
+          <Pressable
+            style={styles.tileButton}
+            onPress={() => {
+              haptics.light();
+              navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('AddIncome');
+            }}
+          >
+            <WalletCards color={colors.accent} size={20} strokeWidth={1.75} />
+            <Text style={styles.tileLabel}>Доход</Text>
+          </Pressable>
+          <Pressable
+            style={styles.tileButton}
+            onPress={() => {
+              haptics.light();
+              navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Limits');
+            }}
+          >
+            <ShieldCheck color={colors.accent} size={20} strokeWidth={1.75} />
+            <Text style={styles.tileLabel}>Лимиты</Text>
+          </Pressable>
+        </View>
+      </FadeInView>
+
+      <FadeInView index={3}>
+        <Text style={styles.sectionTitle}>Лимиты</Text>
+
+        {isFirstLoad ? (
+          <View style={styles.limitsList}>
+            {[0, 1].map((i) => (
+              <View key={i} style={styles.limitRow}>
+                <Skeleton width={32} height={32} borderRadius={16} />
+                <View style={styles.limitInfo}>
+                  <Skeleton width="60%" height={13} />
+                  <Skeleton width="100%" height={6} style={{ marginTop: 8 }} />
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : topLimits.length === 0 ? (
+          <Pressable
+            style={styles.limitsEmptyCard}
+            onPress={() => navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Limits')}
+          >
+            <ShieldCheck color={colors.accent} size={22} strokeWidth={1.75} />
+            <Text style={styles.limitsEmptyText}>
+              Задайте лимит бюджета по категориям — здесь появится прогресс.
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.limitsList}>
+            {topLimits.map((limit) => (
+              <Pressable
+                key={limit.id}
+                style={styles.limitRow}
+                onPress={() => {
+                  haptics.light();
+                  navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Limits');
+                }}
+              >
+                <CategoryIcon category={limit.category_name} size={32} />
+                <View style={styles.limitInfo}>
+                  <View style={styles.limitTopRow}>
+                    <Text style={styles.limitName}>{limit.category_name}</Text>
+                    <Text style={[styles.limitPercent, { color: progressColor(limit.percent) }]}>
+                      {limit.percent.toFixed(0)}%
+                    </Text>
+                  </View>
+                  <AnimatedProgressBar percent={limit.percent} height={6} />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </FadeInView>
+
+      {!isFirstLoad && receipts.length === 0 && (
         <Text style={styles.hint}>Отсканируйте первый чек кнопкой выше — «Сканировать чек».</Text>
       )}
-
-      <AddWidgetSheet
-        visible={addWidgetVisible}
-        onClose={() => setAddWidgetVisible(false)}
-        onOpenLimits={() => {
-          setAddWidgetVisible(false);
-          navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()?.navigate('Limits');
-        }}
-      />
     </ScrollView>
   );
 }
@@ -324,7 +359,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
   greeting: {
@@ -332,11 +367,6 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     letterSpacing: -0.3,
-  },
-  greetingSub: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 4,
   },
   headerRight: {
     flexDirection: 'row',
@@ -375,12 +405,12 @@ const styles = themedStyles(() => StyleSheet.create({
     fontWeight: '700',
   },
   aiCard: {
-    backgroundColor: colors.accentSoft,
+    backgroundColor: colors.surface,
     borderRadius: 18,
     padding: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(52,211,153,0.25)',
+    borderColor: colors.cardBorder,
   },
   aiHeader: {
     flexDirection: 'row',
@@ -414,7 +444,6 @@ const styles = themedStyles(() => StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    overflow: 'hidden',
   },
   spendHeader: {
     flexDirection: 'row',
@@ -433,8 +462,8 @@ const styles = themedStyles(() => StyleSheet.create({
   familyToggle: {
     width: 26,
     height: 26,
-    borderRadius: 9,
-    backgroundColor: colors.accentSoft,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -475,8 +504,8 @@ const styles = themedStyles(() => StyleSheet.create({
     marginTop: 4,
   },
   chartWrap: {
-    marginTop: 12,
-    alignItems: 'center',
+    marginTop: 14,
+    alignSelf: 'stretch',
   },
   sectionTitle: {
     color: colors.textPrimary,
@@ -485,53 +514,67 @@ const styles = themedStyles(() => StyleSheet.create({
     letterSpacing: 0.2,
     marginBottom: 10,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 12,
+  scanGlow: {
+    shadowColor: colors.accent,
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  actionIconChip: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  limitsButton: {
+  scanButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderRadius: 18,
+    paddingVertical: 16,
+    backgroundColor: colors.accent,
   },
-  incomeButton: {
+  scanButtonLabel: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  tileRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
     marginTop: 10,
+  },
+  tileButton: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
-  limitsButtonLabel: {
+  tileLabel: {
     color: colors.textPrimary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
-  topCategories: {
+  limitsEmptyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  limitsEmptyText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  limitsList: {
     gap: 8,
   },
-  categoryRow: {
+  limitRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -541,43 +584,23 @@ const styles = themedStyles(() => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
-  categoryName: {
+  limitInfo: {
     flex: 1,
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
+    gap: 6,
   },
-  categoryAmount: {
-    color: colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  categoryPercent: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    minWidth: 34,
-    textAlign: 'right',
-  },
-  actionButton: {
-    flex: 1,
+  limitTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    paddingVertical: 13,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
+    justifyContent: 'space-between',
   },
-  actionLabel: {
+  limitName: {
     color: colors.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    flex: 1,
   },
-  widgetsSection: {
-    gap: 12,
+  limitPercent: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   hint: {
     color: colors.textSecondary,

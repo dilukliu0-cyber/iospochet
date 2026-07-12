@@ -19,6 +19,7 @@ type SettingsState = {
         | 'nickname'
         | 'avatar_path'
         | 'chart_style'
+        | 'home_chart'
       >
     >,
   ) => Promise<void>;

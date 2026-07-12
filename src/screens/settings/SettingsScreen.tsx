@@ -141,17 +141,31 @@ export function SettingsScreen({ navigation }: Props) {
           Аналитика считается в основной валюте. Чеки в другой валюте конвертируются по курсу на день покупки.
         </Text>
 
-        <Text style={styles.sectionTitle}>Вид диаграммы в «Расходах»</Text>
+        <Text style={styles.sectionTitle}>Диаграмма в «Расходах»</Text>
         <View style={styles.list}>
           <SelectableRow
-            label="Кольцевая"
+            label="По категориям (кольцо)"
             selected={(settings?.chart_style ?? 'donut') === 'donut'}
             onPress={() => updateSettings({ chart_style: 'donut' })}
           />
           <SelectableRow
-            label="Столбчатая"
+            label="Суммы по категориям (столбцы)"
             selected={settings?.chart_style === 'bars'}
             onPress={() => updateSettings({ chart_style: 'bars' })}
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>Диаграмма на «Главной»</Text>
+        <View style={styles.list}>
+          <SelectableRow
+            label="Динамика расходов (линия)"
+            selected={(settings?.home_chart ?? 'line') === 'line'}
+            onPress={() => updateSettings({ home_chart: 'line' })}
+          />
+          <SelectableRow
+            label="Расходы по дням (столбцы)"
+            selected={settings?.home_chart === 'daily'}
+            onPress={() => updateSettings({ home_chart: 'daily' })}
           />
         </View>
 

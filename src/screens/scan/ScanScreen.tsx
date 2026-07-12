@@ -20,6 +20,14 @@ type Props = NativeStackScreenProps<AppStackParamList, 'Scan'>;
 // Отступ вокруг рамки при вырезке (в экранных пикселях) — чтобы не срезать края чека.
 const CROP_MARGIN = 16;
 
+// Этот экран — оверлей поверх живой камеры (или чёрного экрана до выдачи
+// разрешения), а не обычный themedStyles-фон. Управляющие элементы должны
+// оставаться светлыми ВСЕГДА, а не следовать теме приложения — иначе в
+// светлой теме colors.textPrimary становится тёмным и иконки/текст на
+// тёмной полупрозрачной подложке (или чёрном фоне) пропадают из виду.
+const OVERLAY_TEXT = '#FFFFFF';
+const OVERLAY_DARK = '#0A0A0C';
+
 export function ScanScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<'off' | 'on'>('off');
@@ -168,14 +176,14 @@ export function ScanScreen({ navigation }: Props) {
 
       <View style={styles.topBar}>
         <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
-          <X color={colors.textPrimary} size={22} />
+          <X color={OVERLAY_TEXT} size={22} />
         </Pressable>
         <Text style={styles.topTitle}>Сканирование чека</Text>
         <Pressable
           style={styles.iconButton}
           onPress={() => Alert.alert('Подсказка', 'Поместите чек полностью внутри рамки при хорошем освещении.')}
         >
-          <CircleHelp color={colors.textPrimary} size={22} />
+          <CircleHelp color={OVERLAY_TEXT} size={22} />
         </Pressable>
       </View>
 
@@ -205,7 +213,7 @@ export function ScanScreen({ navigation }: Props) {
       <View style={styles.bottomBar}>
         <View style={styles.sideGroup}>
           <Pressable style={styles.iconButton} onPress={handlePickFromGallery} disabled={isCapturing || isProcessing}>
-            <ImageIcon color={colors.textPrimary} size={24} />
+            <ImageIcon color={OVERLAY_TEXT} size={24} />
           </Pressable>
           <Pressable
             style={styles.iconButton}
@@ -213,7 +221,7 @@ export function ScanScreen({ navigation }: Props) {
             disabled={isProcessing}
           >
             {flash === 'off' ? (
-              <ZapOff color={colors.textPrimary} size={22} />
+              <ZapOff color={OVERLAY_TEXT} size={22} />
             ) : (
               <Zap color={colors.accent} size={22} />
             )}
@@ -221,7 +229,7 @@ export function ScanScreen({ navigation }: Props) {
         </View>
 
         <Pressable style={styles.shutter} onPress={handleCapture} disabled={isCapturing || isProcessing}>
-          {isCapturing ? <ActivityIndicator color={colors.background} /> : <View style={styles.shutterInner} />}
+          {isCapturing ? <ActivityIndicator color={OVERLAY_DARK} /> : <View style={styles.shutterInner} />}
         </Pressable>
 
         <View style={[styles.sideGroup, styles.sideGroupRight]}>
@@ -288,12 +296,12 @@ const styles = themedStyles(() => StyleSheet.create({
     gap: 12,
   },
   permissionTitle: {
-    color: colors.textPrimary,
+    color: OVERLAY_TEXT,
     fontSize: 20,
     fontWeight: '600',
   },
   permissionSubtitle: {
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 12,
@@ -309,7 +317,7 @@ const styles = themedStyles(() => StyleSheet.create({
     paddingHorizontal: 20,
   },
   topTitle: {
-    color: colors.textPrimary,
+    color: OVERLAY_TEXT,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -370,7 +378,7 @@ const styles = themedStyles(() => StyleSheet.create({
     borderBottomRightRadius: 8,
   },
   hint: {
-    color: colors.textPrimary,
+    color: OVERLAY_TEXT,
     fontSize: 14,
     backgroundColor: 'rgba(28,28,31,0.7)',
     paddingHorizontal: 14,
@@ -387,7 +395,7 @@ const styles = themedStyles(() => StyleSheet.create({
     padding: 12,
   },
   errorText: {
-    color: colors.textPrimary,
+    color: OVERLAY_TEXT,
     fontSize: 13,
     textAlign: 'center',
   },
@@ -396,7 +404,7 @@ const styles = themedStyles(() => StyleSheet.create({
     bottom: 138,
     left: 20,
     right: 20,
-    color: colors.textPrimary,
+    color: OVERLAY_TEXT,
     fontSize: 13,
     textAlign: 'center',
     backgroundColor: 'rgba(28,28,31,0.7)',
@@ -426,7 +434,7 @@ const styles = themedStyles(() => StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.textPrimary,
+    backgroundColor: OVERLAY_TEXT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -435,7 +443,7 @@ const styles = themedStyles(() => StyleSheet.create({
     height: 60,
     borderRadius: 30,
     borderWidth: 3,
-    borderColor: colors.background,
+    borderColor: OVERLAY_DARK,
   },
   thumbWrap: {
     width: 40,
@@ -447,7 +455,7 @@ const styles = themedStyles(() => StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: colors.textPrimary,
+    borderColor: OVERLAY_TEXT,
   },
   thumbnailImage: {
     width: '100%',
@@ -491,7 +499,7 @@ const styles = themedStyles(() => StyleSheet.create({
     gap: 12,
   },
   processingText: {
-    color: colors.textPrimary,
+    color: OVERLAY_TEXT,
     fontSize: 15,
   },
 }));

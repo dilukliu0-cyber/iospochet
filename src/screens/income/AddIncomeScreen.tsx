@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useToastStore } from '../../store/toastStore';
 import { colors } from '../../theme/colors';
 import { themedStyles } from '../../theme/themedStyles';
+import { haptics } from '../../utils/haptics';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'AddIncome'>;
 
@@ -37,9 +38,11 @@ export function AddIncomeScreen({ navigation }: Props) {
     setSaving(false);
 
     if (saveError) {
+      haptics.warning();
       setError(saveError);
       return;
     }
+    haptics.success();
     showToast('Доход добавлен');
     navigation.goBack();
   }

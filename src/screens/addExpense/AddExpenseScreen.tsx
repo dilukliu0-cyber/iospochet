@@ -13,6 +13,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { colors } from '../../theme/colors';
 import { getCategoryIcon } from '../../utils/categoryIcons';
 import { themedStyles } from '../../theme/themedStyles';
+import { haptics } from '../../utils/haptics';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'AddExpense'>;
 
@@ -66,9 +67,11 @@ export function AddExpenseScreen({ navigation }: Props) {
     setSaving(false);
 
     if (saveError) {
+      haptics.warning();
       setError(saveError);
       return;
     }
+    haptics.success();
     navigation.goBack();
   }
 

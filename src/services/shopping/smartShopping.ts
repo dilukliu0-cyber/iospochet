@@ -147,6 +147,23 @@ export async function suggestTemplateItems(name: string): Promise<{ items: strin
   return { items: data.items, error: null };
 }
 
+// Свободный запрос пользователя («список для лазаньи», «сборы на дачу») —
+// ИИ составляет список товаров с нуля (не из истории покупок, см. edge
+// function) для добавления в текущий список покупок. Если запрос — блюдо,
+// заодно возвращается краткий рецепт для кнопки «Готовить».
+export async function requestAiShoppingList(
+  query: string,
+): Promise<{ items: string[]; recipe: string[] | null; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke<{
+    items?: string[];
+    recipe?: string[] | null;
+    error?: string;
+  }>('shopping-ai-generate', { body: { query } });
+  if (error) return { items: [], recipe: null, error: error.message ?? 'Не удалось составить список' };
+  if (!data?.items) return { items: [], recipe: null, error: data?.error ?? 'Не удалось составить список' };
+  return { items: data.items, recipe: data.recipe ?? null, error: null };
+}
+
 // «Живое» ИИ-сообщение по уже посчитанным (не выдуманным) прогнозам — см.
 // shopping-insights Edge Function. Кэшируется там же, звать не боимся.
 export async function fetchShoppingInsight(

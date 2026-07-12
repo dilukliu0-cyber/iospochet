@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Pencil, Trash2, TriangleAlert } from 'lucide-react-native';
+import { Trash2, TriangleAlert } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CategoryIcon } from '../../components/ui/CategoryIcon';
@@ -176,7 +176,7 @@ export function ReceiptReviewScreen({ route, navigation }: Props) {
                 style={[styles.itemRow, item.needsReview && styles.itemRowReview]}
                 onPress={() => openEdit(index)}
               >
-                <CategoryIcon category={item.category} size={40} />
+                <CategoryIcon category={item.category} itemName={item.cleanedName} size={40} />
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemName}>{item.cleanedName}</Text>
                   <Text style={styles.itemCategory}>
@@ -187,9 +187,6 @@ export function ReceiptReviewScreen({ route, navigation }: Props) {
                 <Text style={styles.itemPrice}>
                   {item.price.toFixed(2)} {recognized.currency}
                 </Text>
-                <Pressable onPress={() => openEdit(index)} hitSlop={10} style={styles.pencilButton}>
-                  <Pencil color={colors.textTertiary} size={16} />
-                </Pressable>
                 <Pressable onPress={() => removeItem(index)} hitSlop={10} style={styles.deleteButton}>
                   <Trash2 color={colors.textTertiary} size={16} />
                 </Pressable>
@@ -364,9 +361,6 @@ const styles = themedStyles(() => StyleSheet.create({
   itemRowReview: {
     borderWidth: 1,
     borderColor: colors.warning,
-  },
-  pencilButton: {
-    paddingLeft: 6,
   },
   itemInfo: {
     flex: 1,

@@ -3,6 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { colors } from '../../theme/colors';
 import { themedStyles } from '../../theme/themedStyles';
+import { AnimatedNumber } from '../ui/AnimatedNumber';
 
 export type DonutSegment = {
   value: number;
@@ -15,6 +16,10 @@ type Props = {
   size?: number;
   strokeWidth?: number;
   centerTop?: string;
+  // Если задано — центр «наматывается» до значения вместо статичного текста
+  // (centerTop в этом случае игнорируется).
+  centerValue?: number;
+  centerFormatter?: (n: number) => string;
   centerBottom?: string;
   onSegmentPress?: (key: string) => void;
 };
@@ -27,6 +32,8 @@ export function DonutChart({
   size = 200,
   strokeWidth = 26,
   centerTop,
+  centerValue,
+  centerFormatter,
   centerBottom,
   onSegmentPress,
 }: Props) {
@@ -81,7 +88,11 @@ export function DonutChart({
       </Animated.View>
 
       <View style={[styles.center, { width: size, height: size }]} pointerEvents="none">
-        {centerTop && <Text style={styles.centerTop}>{centerTop}</Text>}
+        {centerValue !== undefined ? (
+          <AnimatedNumber value={centerValue} formatter={centerFormatter} style={styles.centerTop} />
+        ) : (
+          centerTop && <Text style={styles.centerTop}>{centerTop}</Text>
+        )}
         {centerBottom && <Text style={styles.centerBottom}>{centerBottom}</Text>}
       </View>
     </Pressable>

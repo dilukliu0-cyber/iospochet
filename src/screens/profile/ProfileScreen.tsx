@@ -110,9 +110,7 @@ export function ProfileScreen() {
           const Icon = row.icon;
           return (
             <Pressable key={row.label} style={styles.menuRow} onPress={row.onPress}>
-              <View style={styles.menuIcon}>
-                <Icon color={colors.accent} size={18} />
-              </View>
+              <Icon color={colors.accent} size={20} strokeWidth={1.75} />
               <Text style={styles.menuLabel}>{row.label}</Text>
               {row.value && <Text style={styles.menuValue}>{row.value}</Text>}
               <ChevronRight color={colors.textTertiary} size={18} />
@@ -225,14 +223,6 @@ const styles = themedStyles(() => StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 14,
-  },
-  menuIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   menuLabel: {
     flex: 1,

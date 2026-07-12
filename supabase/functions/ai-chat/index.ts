@@ -5,6 +5,14 @@
 // поэтому RLS ограничивает выборку), отвечает через Gemini текстом.
 // Хранит переписку в ai_messages, логирует стоимость в ai_api_usage (§39.17).
 //
+// Также распознаёт запросы на список покупок («сделай список для лазаньи»,
+// «добавь в покупки молоко и хлеб») — единственный способ создать список
+// через ИИ во всём приложении (вкладок «Умный»/«Шаблоны» с отдельным полем
+// ввода больше нет, всё через этот чат). Модель сама решает по сообщению,
+// это список или обычный вопрос (type: 'shopping_list' | 'chat' в JSON-
+// ответе); если список — товары реально добавляются в shopping_list_items,
+// а для блюда в этот же ответ дописывается рецепт по шагам.
+//
 // Deploy: supabase functions deploy ai-chat
 // Secret: тот же GEMINI_API_KEY, что и у scan-receipt.
 
@@ -32,6 +40,58 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Pro
     await new Promise((resolve) => setTimeout(resolve, delay));
     delay *= 3;
   }
+}
+
+// deno-lint-ignore no-explicit-any
+type SupabaseClientAny = any;
+
+// Добавляет товары в активный список покупок пользователя (создаёт список,
+// если его ещё нет — тот же список, что открывается на вкладке «Покупки»),
+// пропуская то, что уже там есть. Возвращает реально добавленные названия.
+async function addToShoppingList(
+  userClient: SupabaseClientAny,
+  userId: string,
+  items: string[],
+): Promise<string[]> {
+  let { data: list } = await userClient
+    .from('shopping_lists')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (!list) {
+    const { data: created, error } = await userClient
+      .from('shopping_lists')
+      .insert({ user_id: userId })
+      .select('id')
+      .single();
+    if (error || !created) {
+      console.error('Не удалось создать список покупок', error);
+      return [];
+    }
+    list = created;
+  }
+
+  const { data: existing } = await userClient
+    .from('shopping_list_items')
+    .select('text')
+    .eq('list_id', list.id);
+  const existingLower = new Set(
+    (existing ?? []).map((i: { text: string }) => i.text.trim().toLowerCase()),
+  );
+
+  const toAdd = items.filter((name) => !existingLower.has(name.trim().toLowerCase()));
+  if (toAdd.length === 0) return [];
+
+  const { error: insertError } = await userClient
+    .from('shopping_list_items')
+    .insert(toAdd.map((text) => ({ list_id: list.id, user_id: userId, text })));
+  if (insertError) {
+    console.error('Не удалось добавить товары в список покупок', insertError);
+    return [];
+  }
+  return toAdd;
 }
 
 Deno.serve(async (req) => {
@@ -149,26 +209,31 @@ Deno.serve(async (req) => {
       .map((m: { role: string; content: string }) => `${m.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${m.content}`)
       .join('\n');
 
-    const systemPrompt = `Ты — личный финансовый аналитик в приложении учёта расходов. Твоя сила — конкретика по реальным чекам пользователя.
+    const systemPrompt = `Ты — универсальный ассистент в приложении учёта расходов и покупок. У каждого сообщения пользователя ровно один из двух типов ответа:
 
-Что ты умеешь и должен делать по запросу:
-- Находить ЛИШНИЕ и импульсивные траты: частые снеки/сладкое/напитки, дублирующиеся покупки, мелкие траты, которые в сумме дают заметную цифру. Называй товары и суммы из данных.
-- Считать потенциальную экономию: «если сократить X вдвое — сэкономишь ~N в месяц».
-- Сравнивать траты с лимитами (limits в JSON) и предупреждать о приближении к ним.
-- Замечать закономерности: в каком магазине дороже, какие категории растут.
-- Отвечать на вопросы «сколько я потратил», «на что уходит больше всего» — цифры бери из monthCategoryTotals.
+РЕЖИМ "shopping_list" — пользователь просит создать/дополнить список покупок: называет блюдо («сделай список для лазаньи», «борщ»), повод («сборы на дачу», «на пикник») или напрямую перечисляет товары («добавь молоко и хлеб»). Тогда:
+- items: от 1 до 12 товаров по-русски, коротко (1-3 слова, «Сыр моцарелла», не «200г тёртого сыра моцарелла»), без дубликатов.
+- recipe: если это конкретное блюдо — 4-8 коротких шагов приготовления по-русски (каждый шаг — одно предложение); если не блюдо (повод/сборы/явный список товаров) — null.
+- reply в этом режиме не используй (можешь оставить пустой строкой) — текст ответа соберёт само приложение.
 
-Правила:
-- Используй ТОЛЬКО данные из JSON ниже. Не выдумывай товары, цены и проценты.
-- Если данных мало для вывода — скажи честно и предложи отсканировать больше чеков.
-- Пиши на русском, коротко и по делу: 3-6 предложений или маркированный список. Суммы округляй до целых.
-- Не читай мораль. Дружелюбно, но конкретно: товар → сумма → совет.
+РЕЖИМ "chat" — любой другой вопрос: про траты, чеки, лимиты, или просто разговор. Тогда ты — личный финансовый аналитик, сила которого — конкретика по реальным чекам пользователя:
+- Находи ЛИШНИЕ и импульсивные траты: частые снеки/сладкое/напитки, дублирующиеся покупки, мелкие траты, которые в сумме дают заметную цифру. Называй товары и суммы из данных.
+- Считай потенциальную экономию: «если сократить X вдвое — сэкономишь ~N в месяц».
+- Сравнивай траты с лимитами (limits в JSON) и предупреждай о приближении к ним.
+- Замечай закономерности: в каком магазине дороже, какие категории растут.
+- Отвечай на вопросы «сколько я потратил», «на что уходит больше всего» — цифры бери из monthCategoryTotals.
+- Используй ТОЛЬКО данные из JSON ниже. Не выдумывай товары, цены и проценты. Если данных мало — скажи честно и предложи отсканировать больше чеков.
+- Пиши на русском, коротко и по делу: 3-6 предложений или маркированный список. Суммы округляй до целых. Не читай мораль.
+- items и recipe в этом режиме — null.
 
 Данные пользователя (JSON):
 ${JSON.stringify(contextSummary)}${attachedReceiptBlock}
 
 История переписки:
-${conversation || '(пусто)'}`;
+${conversation || '(пусто)'}
+
+Ответь ТОЛЬКО JSON-объектом, без markdown и пояснений, строго в формате:
+{"type": "shopping_list" | "chat", "reply": "...", "items": [...] | null, "recipe": [...] | null}`;
 
     const geminiResponse = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiApiKey}`,
@@ -192,7 +257,39 @@ ${conversation || '(пусто)'}`;
     }
 
     const geminiData = await geminiResponse.json();
-    const replyText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+    const cleaned = raw.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+
+    let parsed: { type?: string; reply?: string; items?: unknown; recipe?: unknown } = {};
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return jsonResponse({ error: 'ИИ вернул неожиданный формат, попробуйте ещё раз' }, 502);
+    }
+
+    let replyText: string;
+
+    if (parsed.type === 'shopping_list' && Array.isArray(parsed.items) && parsed.items.length > 0) {
+      const items = (parsed.items as unknown[])
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        .slice(0, 12);
+      const recipeSteps = Array.isArray(parsed.recipe)
+        ? (parsed.recipe as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        : null;
+
+      const addedNames = await addToShoppingList(userClient, user.id, items);
+
+      if (addedNames.length > 0) {
+        replyText = `Добавил в список покупок: ${addedNames.join(', ')}.`;
+      } else {
+        replyText = 'Эти товары уже были в твоём списке покупок.';
+      }
+      if (recipeSteps && recipeSteps.length > 0) {
+        replyText += `\n\nКак приготовить:\n${recipeSteps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
+      }
+    } else {
+      replyText = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
+    }
 
     if (!replyText) {
       return jsonResponse({ error: 'ИИ вернул пустой ответ' }, 502);

@@ -2,6 +2,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, Receipt as ReceiptIcon, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { CategoryIcon } from '../../components/ui/CategoryIcon';
 import { PrimaryButton } from '../../components/ui/PrimaryButton';
 import { SelectableRow } from '../../components/ui/SelectableRow';
 import { TextField } from '../../components/ui/TextField';
@@ -11,8 +12,7 @@ import { getReceiptImageUrl } from '../../services/receipts/receiptImage';
 import { supabase } from '../../services/api/supabaseClient';
 import { colors } from '../../theme/colors';
 import type { ReceiptItemRecord, ReceiptRecord } from '../../types/receiptRecord';
-import { CATEGORY_ICON_BY_NAME, CATEGORY_NAMES } from '../../utils/categoryIconMap';
-import { getCategoryIcon } from '../../utils/categoryIcons';
+import { CATEGORY_NAMES } from '../../utils/categoryIconMap';
 import { themedStyles } from '../../theme/themedStyles';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReceiptDetail'>;
@@ -146,7 +146,6 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
 
         <View style={styles.items}>
           {items.map((item) => {
-            const Icon = getCategoryIcon(CATEGORY_ICON_BY_NAME[item.category_name] ?? 'ellipsis');
             return (
               <Pressable
                 key={item.id}
@@ -155,9 +154,7 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
                   editing ? openEdit(item) : navigation.navigate('Product', { productName: item.cleaned_name })
                 }
               >
-                <View style={styles.itemIcon}>
-                  <Icon color={colors.accent} size={18} />
-                </View>
+                <CategoryIcon category={item.category_name} itemName={item.cleaned_name} size={36} />
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemName}>{item.cleaned_name}</Text>
                   <Text style={styles.itemCategory}>
@@ -372,14 +369,6 @@ const styles = themedStyles(() => StyleSheet.create({
   itemRowReview: {
     borderWidth: 1,
     borderColor: colors.warning,
-  },
-  itemIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   itemInfo: {
     flex: 1,

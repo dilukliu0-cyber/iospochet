@@ -300,6 +300,7 @@ export function FamilyScreen({ navigation }: Props) {
                           <Text style={styles.memberId} numberOfLines={1} ellipsizeMode="middle">
                             ID: {member.user_id}
                           </Text>
+                          <Text style={styles.memberIdHint}>нажмите, чтобы скопировать</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -474,6 +475,11 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 10,
     fontFamily: 'monospace',
     marginTop: 3,
+  },
+  memberIdHint: {
+    color: colors.textTertiary,
+    fontSize: 9,
+    marginTop: 1,
   },
   memberNameRow: {
     flexDirection: 'row',
