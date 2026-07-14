@@ -189,6 +189,12 @@ export function SettingsScreen({ navigation }: Props) {
           />
         </View>
 
+        <Text style={styles.sectionTitle}>Приложение</Text>
+        <Pressable style={styles.currencyRow} onPress={() => navigation.navigate('IntroPreview')}>
+          <Text style={styles.currencyValue}>Стартовый гайд</Text>
+          <Text style={styles.currencyChange}>Посмотреть</Text>
+        </Pressable>
+
         <PrimaryButton
           label="Удалить аккаунт и все данные"
           variant="secondary"

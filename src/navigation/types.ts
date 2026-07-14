@@ -6,6 +6,7 @@ export type AuthStackParamList = {
 };
 
 export type OnboardingStackParamList = {
+  Intro: undefined;
   Language: undefined;
   Currency: { language: string };
 };
@@ -33,4 +34,5 @@ export type AppStackParamList = {
   Family: undefined;
   NewTemplate: undefined;
   AddIncome: undefined;
+  IntroPreview: undefined;
 };
