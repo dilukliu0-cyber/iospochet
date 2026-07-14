@@ -1,0 +1,63 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Write .env
+        # Значения берутся из Repository variables (Settings → Secrets and
+        # variables → Actions → Variables) — те же, что использует iOS-сборка.
+        env:
+          SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Задайте Repository variables EXPO_PUBLIC_SUPABASE_URL и EXPO_PUBLIC_SUPABASE_ANON_KEY (Settings → Secrets and variables → Actions → Variables)"
+            exit 1
+          fi
+          echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL" >> .env
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> .env
+
+      - name: Expo prebuild (Android)
+        run: CI=1 npx expo prebuild --platform android
+
+      - name: Build debug APK
+        # assembleDebug подписывается автосгенерированным debug-ключом —
+        # ставится на любой Android-телефон без Play Store и без аккаунта
+        # разработчика, ровно то, что нужно для «скачал по ссылке — работает».
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: App-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

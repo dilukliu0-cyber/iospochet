@@ -20,6 +20,7 @@ type SettingsState = {
         | 'avatar_path'
         | 'chart_style'
         | 'home_chart'
+        | 'translate_items'
       >
     >,
   ) => Promise<void>;

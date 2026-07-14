@@ -1,6 +1,7 @@
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../api/supabaseClient';
 import { scanReceipt } from '../ai/scanReceipt';
+import { useSettingsStore } from '../../store/settingsStore';
 import { useToastStore } from '../../store/toastStore';
 import type { RecognizedReceipt } from '../../types/receipt';
 import { autoCheckShoppingList } from './receiptsService';
@@ -61,7 +62,11 @@ async function processInBackground(
   imageBase64: string,
   baseCurrency: string,
 ): Promise<void> {
-  const { data: recognized, error } = await scanReceipt(imageBase64, 'image/jpeg');
+  const settings = useSettingsStore.getState().settings;
+  const { data: recognized, error } = await scanReceipt(imageBase64, 'image/jpeg', {
+    language: settings?.language,
+    translateItems: settings?.translate_items,
+  });
   if (error || !recognized) {
     throw new Error(error ?? 'empty result');
   }

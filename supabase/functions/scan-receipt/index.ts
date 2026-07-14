@@ -41,9 +41,27 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const SYSTEM_PROMPT = `Ты анализируешь фото кассового чека. Извлеки структурированные данные.
-Не копируй грязные OCR-названия — понимай сокращения, опечатки и бренды и приводи их к читаемому виду.
-Не выдумывай цену или данные, которых не видно на чеке.
+const LANGUAGE_NAMES: Record<string, string> = {
+  ru: 'русский',
+  cs: 'чешский',
+  en: 'английский',
+};
+
+function buildSystemPrompt(translateToLanguage: string | null): string {
+  const translationRule = translateToLanguage
+    ? `Переведи cleanedName на ${translateToLanguage} язык (кроме имён собственных и брендов — «Coca-Cola», ` +
+      `«Lay's» и т.п. оставляй как есть, переводится только описание товара). Это применяется ПОСЛЕ ` +
+      `приведения названия к читаемому виду (см. правило ниже).\n`
+    : '';
+
+  return `Ты анализируешь фото кассового чека. Извлеки структурированные данные.
+cleanedName — нормальное человеческое название товара, а не сырой текст с кассы. Расшифровывай
+сокращения, артикулы и коды упаковки (например «ХЛ БЕЛ НАР 500Г» → «Хлеб белый нарезной», «МОЛ 3.2% 1Л» →
+«Молоко 3.2%»). Но если название на чеке и так понятно человеку (бренд + товар, например «Lay's Sour
+Cream & Onion» или «Coca-Cola Zero») — не переписывай и не сокращай его, оставь как есть, поправив только
+опечатки и регистр. Правило: чем более «зашифровано» название на чеке, тем сильнее его нужно раскрыть;
+уже понятные названия трогать не нужно.
+${translationRule}Не выдумывай цену или данные, которых не видно на чеке.
 Если итоговая сумма товаров не совпадает с totalAmount — добавь предупреждение в warnings, не пытайся подогнать цифры.
 Категория каждого товара должна быть ОДНОЙ из этого списка (ровно как написано): ${CATEGORY_NAMES.join(', ')}.
 confidence меньше 0.7 — needsReview = true.
@@ -74,6 +92,7 @@ confidence меньше 0.7 — needsReview = true.
   ],
   "warnings": string[]
 }`;
+}
 
 // §14.2: до 3 попыток с backoff при 429/5xx/сетевых ошибках Gemini.
 async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
@@ -123,10 +142,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Не авторизовано' }, 401);
     }
 
-    const { imageBase64, mimeType } = await req.json();
+    const { imageBase64, mimeType, language, translateItems } = await req.json();
     if (!imageBase64 || !mimeType) {
       return jsonResponse({ error: 'imageBase64 и mimeType обязательны' }, 400);
     }
+
+    const translateToLanguage = translateItems && typeof language === 'string' ? LANGUAGE_NAMES[language] ?? null : null;
+    const systemPrompt = buildSystemPrompt(translateToLanguage);
 
     const geminiResponse = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiApiKey}`,
@@ -137,7 +159,7 @@ Deno.serve(async (req) => {
           contents: [
             {
               parts: [
-                { text: SYSTEM_PROMPT },
+                { text: systemPrompt },
                 { inlineData: { mimeType, data: imageBase64 } },
               ],
             },

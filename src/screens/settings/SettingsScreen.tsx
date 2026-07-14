@@ -99,6 +99,21 @@ export function SettingsScreen({ navigation }: Props) {
           ))}
         </View>
 
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleTextWrap}>
+            <Text style={styles.toggleLabel}>Переводить товары</Text>
+            <Text style={styles.toggleHint}>
+              Названия товаров в чеке будут переведены на выбранный язык (кроме брендов).
+            </Text>
+          </View>
+          <Switch
+            value={settings?.translate_items ?? false}
+            onValueChange={(value) => updateSettings({ translate_items: value })}
+            trackColor={{ false: colors.surfaceElevated, true: colors.accent }}
+            thumbColor={colors.textPrimary}
+          />
+        </View>
+
         <Text style={styles.sectionTitle}>Основная валюта</Text>
         {!currencyOpen ? (
           <Pressable style={styles.currencyRow} onPress={() => setCurrencyOpen(true)}>
@@ -290,5 +305,15 @@ const styles = themedStyles(() => StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 15,
     fontWeight: '500',
+  },
+  toggleTextWrap: {
+    flex: 1,
+    gap: 4,
+    marginRight: 12,
+  },
+  toggleHint: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
   },
 }));

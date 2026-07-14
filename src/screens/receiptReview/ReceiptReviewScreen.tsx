@@ -107,7 +107,11 @@ export function ReceiptReviewScreen({ route, navigation }: Props) {
   async function advanceToNext(queue: typeof queuedPhotos) {
     setAdvancingQueue(true);
     const [next, ...rest] = queue;
-    const { data, error } = await scanReceipt(next.base64, 'image/jpeg');
+    const settings = useSettingsStore.getState().settings;
+    const { data, error } = await scanReceipt(next.base64, 'image/jpeg', {
+      language: settings?.language,
+      translateItems: settings?.translate_items,
+    });
     setAdvancingQueue(false);
 
     if (error || !data) {

@@ -5,10 +5,14 @@ type ScanReceiptResult =
   | { data: RecognizedReceipt; error: null }
   | { data: null; error: string };
 
-export async function scanReceipt(imageBase64: string, mimeType: string): Promise<ScanReceiptResult> {
+export async function scanReceipt(
+  imageBase64: string,
+  mimeType: string,
+  options?: { language?: string; translateItems?: boolean },
+): Promise<ScanReceiptResult> {
   const { data, error } = await supabase.functions.invoke<{ result?: RecognizedReceipt; error?: string }>(
     'scan-receipt',
-    { body: { imageBase64, mimeType } },
+    { body: { imageBase64, mimeType, language: options?.language, translateItems: options?.translateItems } },
   );
 
   if (error) {

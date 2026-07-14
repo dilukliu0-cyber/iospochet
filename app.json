@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.dilukliu0.iospochet"
     },
     "android": {
+      "package": "com.dilukliu0.iospochet",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
