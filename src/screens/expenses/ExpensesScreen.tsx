@@ -45,7 +45,6 @@ import { avatarUrl } from '../../services/profile/avatarService';
 import { submitScan } from '../../services/receipts/backgroundScan';
 import { deleteReceipt } from '../../services/receipts/receiptsService';
 import { deleteIncome, fetchIncomes, fetchWalletBalance } from '../../services/wallet/walletService';
-import { updateExpensesWidget } from '../../services/widget/expensesWidget';
 import { useAuthStore } from '../../store/authStore';
 import { useReceiptsStore } from '../../store/receiptsStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -122,7 +121,6 @@ export function ExpensesScreen() {
     fetchMonthlyCategoryBreakdown(userId, new Date(), !showOnlyMine).then(({ entries, currency }) => {
       setCategories(entries);
       setCategoryCurrency(currency);
-      updateExpensesWidget(entries, currency, 'Всего за месяц');
     });
   }
 

@@ -9,10 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dilukliu0.iospochet",
-      "entitlements": {
-        "com.apple.security.application-groups": ["group.com.dilukliu0.iospochet"]
-      }
+      "bundleIdentifier": "com.dilukliu0.iospochet"
     },
     "android": {
       "adaptiveIcon": {
@@ -38,8 +35,7 @@
         {
           "photosPermission": "Разрешите доступ к галерее, чтобы загрузить фото чека."
         }
-      ],
-      "@bacons/apple-targets"
+      ]
     ]
   }
 }
