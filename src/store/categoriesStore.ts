@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { supabase } from '../services/api/supabaseClient';
 import type { Category } from '../types/category';
 
-const PALETTE = ['#34D399', '#F59E0B', '#38BDF8', '#A78BFA', '#FB7185', '#FBBF24', '#60A5FA', '#4ADE80'];
+// Приглушённая палитра для своих категорий — того же семейства, что и
+// у встроенных (см. CATEGORY_COLOR_BY_NAME), а не яркие крайоны.
+const PALETTE = ['#7C9BB5', '#B5915F', '#9B7FA8', '#B57C8A', '#7FA88A', '#A88F6F', '#6F9A9E', '#A7A15F'];
 
 type CategoriesState = {
   categories: Category[];

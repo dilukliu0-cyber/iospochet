@@ -9,11 +9,11 @@ import { AddIncomeScreen } from '../screens/income/AddIncomeScreen';
 import { IntroPreviewScreen } from '../screens/onboarding/IntroScreen';
 import { LimitsScreen } from '../screens/limits/LimitsScreen';
 import { ProductScreen } from '../screens/product/ProductScreen';
+import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { ReceiptDetailScreen } from '../screens/receiptDetail/ReceiptDetailScreen';
 import { ReceiptReviewScreen } from '../screens/receiptReview/ReceiptReviewScreen';
 import { ScanScreen } from '../screens/scan/ScanScreen';
 import { SearchScreen } from '../screens/search/SearchScreen';
-import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { MainTabs } from './MainTabs';
 import type { AppStackParamList } from './types';
 
@@ -29,7 +29,6 @@ export function AppStack() {
       <Stack.Screen name="Limits" component={LimitsScreen} />
       <Stack.Screen name="Categories" component={CategoriesScreen} />
       <Stack.Screen name="AddExpense" component={AddExpenseScreen} />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Product" component={ProductScreen} />
       <Stack.Screen name="Calendar" component={CalendarScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />
@@ -38,6 +37,7 @@ export function AppStack() {
       <Stack.Screen name="NewTemplate" component={NewTemplateScreen} />
       <Stack.Screen name="AddIncome" component={AddIncomeScreen} />
       <Stack.Screen name="IntroPreview" component={IntroPreviewScreen} options={{ animation: 'fade' }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );
 }

@@ -26,7 +26,6 @@ export type AppStackParamList = {
   Limits: undefined;
   Categories: undefined;
   AddExpense: undefined;
-  Settings: undefined;
   Product: { productName: string };
   Calendar: undefined;
   Search: undefined;
@@ -35,4 +34,5 @@ export type AppStackParamList = {
   NewTemplate: undefined;
   AddIncome: undefined;
   IntroPreview: undefined;
+  Profile: undefined;
 };

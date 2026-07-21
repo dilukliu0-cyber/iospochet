@@ -82,17 +82,24 @@ Deno.serve(async (req) => {
     }
 
     const windowStart = lastDigestAt ?? new Date(now.getTime() - DIGEST_INTERVAL_MS);
+    const monthStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [{ data: receipts }, { data: limits }] = await Promise.all([
+    // Свежие чеки — детально; весь месяц — агрегировано (иначе токены
+    // улетают на сырые списки товаров, а модель тонет в шуме).
+    const [{ data: recentReceipts }, { data: monthReceipts }, { data: limits }] = await Promise.all([
       userClient
         .from('receipts')
         .select('store_name, purchase_date, total_amount, currency, receipt_items(cleaned_name, category_name, price)')
         .gte('created_at', windowStart.toISOString())
         .order('created_at', { ascending: false }),
+      userClient
+        .from('receipts')
+        .select('purchase_date, created_at, total_amount, exchange_rate, receipt_items(cleaned_name, category_name, price)')
+        .gte('created_at', monthStart.toISOString()),
       userClient.from('limits').select('category_name, amount, currency').eq('user_id', user.id),
     ]);
 
-    if (!receipts || receipts.length === 0) {
+    if (!recentReceipts || recentReceipts.length === 0) {
       // Нечего анализировать — сдвигаем метку, чтобы не проверять чаще раза в 2 дня.
       await userClient.from('user_settings').update({ last_ai_digest_at: now.toISOString() }).eq('user_id', user.id);
       return jsonResponse({ skipped: true, reason: 'no_data' });
@@ -102,14 +109,43 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'GEMINI_API_KEY не настроен на сервере' }, 500);
     }
 
-    const contextSummary = { receipts, limits: limits ?? [] };
+    // Агрегаты за месяц: суммы по категориям и часто повторяющиеся покупки.
+    const byCategory = new Map<string, number>();
+    const itemCounts = new Map<string, number>();
+    for (const r of monthReceipts ?? []) {
+      const rate = (r as { exchange_rate?: number }).exchange_rate ?? 1;
+      for (const item of (r as { receipt_items?: { cleaned_name: string; category_name: string; price: number }[] })
+        .receipt_items ?? []) {
+        byCategory.set(item.category_name, (byCategory.get(item.category_name) ?? 0) + item.price * rate);
+        const key = item.cleaned_name.trim().toLowerCase();
+        itemCounts.set(key, (itemCounts.get(key) ?? 0) + 1);
+      }
+    }
+    const monthByCategory = [...byCategory.entries()]
+      .map(([category, total]) => ({ category, total: Math.round(total) }))
+      .sort((a, b) => b.total - a.total);
+    const frequentItems = [...itemCounts.entries()]
+      .filter(([, count]) => count >= 3)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+
+    const contextSummary = {
+      recentReceipts,
+      monthByCategory,
+      frequentItems,
+      limits: limits ?? [],
+    };
 
     const systemPrompt = `Ты — финансовый ассистент в приложении учёта расходов. Раз в 2 дня ты сам, без вопроса
-пользователя, кратко разбираешь его траты за этот период и пишешь дружелюбное сообщение на русском:
-сколько потрачено, на что больше всего, есть ли повод насторожиться (лимиты). 3-5 предложений, без воды.
-Используй ТОЛЬКО данные из JSON ниже — не выдумывай цифры.
+пользователя, пишешь ему короткий разбор трат на русском. У тебя есть: свежие чеки за ~2 дня (детально),
+агрегаты за месяц по категориям, часто повторяющиеся покупки за месяц и лимиты.
+Что сделать: 1) кратко — сколько и на что ушло за последние дни; 2) заметь ОДИН интересный паттерн из
+месячных данных (категория тянет бюджет, часто повторяющаяся покупка, необычно крупная трата); 3) если
+какой-то лимит близок или превышен — предупреди; 4) закончи одним конкретным советом, как сэкономить.
+4-6 предложений, дружелюбно, без воды и без списков. Используй ТОЛЬКО данные из JSON — не выдумывай цифры.
 
-Траты пользователя за последние ~2 дня и его лимиты (JSON):
+Данные (JSON):
 ${JSON.stringify(contextSummary)}`;
 
     const geminiResponse = await fetchWithRetry(

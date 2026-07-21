@@ -8,12 +8,11 @@ const darkPalette = {
   border: '#242A37',
   // Тонкая рамка-волосок для карточек (едва заметный контур).
   cardBorder: 'rgba(148,163,184,0.10)',
-  accent: '#34D399',
-  // Пара к акценту для градиентов (кнопки, hero-карточки).
-  accentAlt: '#22D3EE',
-  accentSoft: 'rgba(52,211,153,0.14)',
-  heroFrom: 'rgba(52,211,153,0.16)',
-  heroTo: 'rgba(34,211,238,0.04)',
+  // Насыщенный лесной изумруд — не яркий неоновый мятный (тот самый
+  // «ИИ-стартап»-цвет Linear/Vercel/чат-ботов), но и не тусклый: сдвинут
+  // в сторону forest green и заметно темнее/глубже неонового оригинала.
+  accent: '#3FA66E',
+  accentSoft: 'rgba(63,166,110,0.16)',
   warning: '#F59E0B',
   error: '#EF4444',
   success: '#22C55E',
@@ -28,11 +27,8 @@ const lightPalette: typeof darkPalette = {
   surfaceElevated: '#EDF0F4',
   border: '#E2E5EB',
   cardBorder: 'rgba(15,23,42,0.08)',
-  accent: '#0EA870',
-  accentAlt: '#0891B2',
-  accentSoft: 'rgba(14,168,112,0.12)',
-  heroFrom: 'rgba(14,168,112,0.14)',
-  heroTo: 'rgba(8,145,178,0.04)',
+  accent: '#2E8659',
+  accentSoft: 'rgba(46,134,89,0.13)',
   warning: '#D97706',
   error: '#DC2626',
   success: '#16A34A',

@@ -8,12 +8,19 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudUpload,
+  LayoutGrid,
+  LogOut,
+  PenLine,
   PlusCircle,
+  ScanLine,
   Send,
+  ShieldCheck,
+  Sparkles,
   Trash2,
   User,
   Users,
   Wallet,
+  WalletCards,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -33,9 +40,12 @@ import { ReceiptListItem } from '../../components/cards/ReceiptListItem';
 import { ReceiptQuickActions } from '../../components/modals/ReceiptQuickActions';
 import { AnimatedNumber } from '../../components/ui/AnimatedNumber';
 import { FadeInView } from '../../components/ui/FadeInView';
+import { ProfileMenuButton } from '../../components/ui/ProfileMenuButton';
 import { ScreenPlaceholder } from '../../components/ui/ScreenPlaceholder';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { SpeedDialFab } from '../../components/ui/SpeedDialFab';
 import type { AppStackParamList } from '../../navigation/types';
+import { checkAiDigest } from '../../services/ai/aiDigest';
 import {
   fetchMonthlyCategoryBreakdown,
   type CategoryBreakdownEntry,
@@ -46,6 +56,8 @@ import { submitScan } from '../../services/receipts/backgroundScan';
 import { deleteReceipt } from '../../services/receipts/receiptsService';
 import { deleteIncome, fetchIncomes, fetchWalletBalance } from '../../services/wallet/walletService';
 import { useAuthStore } from '../../store/authStore';
+import { useChatStore } from '../../store/chatStore';
+import { useLimitsStore } from '../../store/limitsStore';
 import { useReceiptsStore } from '../../store/receiptsStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToastStore } from '../../store/toastStore';
@@ -68,12 +80,15 @@ const MONTH_NAMES = [
 export function ExpensesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const userId = useAuthStore((state) => state.session?.user.id);
+  const signOut = useAuthStore((state) => state.signOut);
   const receipts = useReceiptsStore((state) => state.receipts);
   const ownerProfiles = useReceiptsStore((state) => state.ownerProfiles);
   const isLoading = useReceiptsStore((state) => state.isLoading);
   const fetchReceipts = useReceiptsStore((state) => state.fetch);
   const settings = useSettingsStore((state) => state.settings);
   const showToast = useToastStore((state) => state.show);
+  const limits = useLimitsStore((state) => state.limits);
+  const fetchLimits = useLimitsStore((state) => state.fetch);
 
   const [quickActionsReceipt, setQuickActionsReceipt] = useState<ReceiptRecord | null>(null);
   const [pendingScans, setPendingScans] = useState<QueuedScan[]>([]);
@@ -98,6 +113,12 @@ export function ExpensesScreen() {
   const [openFace, setOpenFace] = useState<'calendar' | 'wallet' | null>(null);
   const [backContent, setBackContent] = useState<'calendar' | 'wallet'>('calendar');
   const walletMode = openFace === 'wallet';
+  // Задняя сторона (position:absolute, inset:0) стягивается под высоту
+  // контейнера, а её задаёт передняя (диаграмма+легенда) — если её
+  // фактическая высота отличается от календаря/кошелька, флип «дёргается»
+  // и низ задней стороны может обрезаться. Меряем переднюю и фиксируем
+  // этой же высотой весь контейнер, чтобы все три грани были одного размера.
+  const [cardHeight, setCardHeight] = useState<number | null>(null);
 
   // Мини-календарь сразу «полный» — переключение месяцев прямо тут, без
   // перехода на отдельный экран.
@@ -128,12 +149,16 @@ export function ExpensesScreen() {
     useCallback(() => {
       if (userId) {
         fetchReceipts(userId);
+        fetchLimits(userId);
         loadCategories();
         if (walletMode) loadWallet();
+        // Главный экран теперь этот — проактивный ИИ-разбор трат
+        // проверяется отсюда (сама функция решает, пора ли).
+        checkAiDigest();
       }
       getQueue().then(setPendingScans);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userId, fetchReceipts, walletMode]),
+    }, [userId, fetchReceipts, fetchLimits, walletMode]),
   );
 
   useEffect(() => {
@@ -143,6 +168,16 @@ export function ExpensesScreen() {
 
   function rootNav() {
     return navigation.getParent<NativeStackNavigationProp<AppStackParamList>>();
+  }
+
+  // Профиль — не вкладка, а «рулетка» из аватарки в шапке.
+  function profileMenuActions() {
+    return [
+      { icon: User, label: 'Настройка профиля', onPress: () => rootNav()?.navigate('Profile') },
+      { icon: LayoutGrid, label: 'Категории', onPress: () => rootNav()?.navigate('Categories') },
+      { icon: Users, label: 'Семейный аккаунт', onPress: () => rootNav()?.navigate('Family') },
+      { icon: LogOut, label: 'Выйти', onPress: () => signOut(), destructive: true },
+    ];
   }
 
   function animateFlip(toValue: number) {
@@ -161,6 +196,13 @@ export function ExpensesScreen() {
       animateFlip(0);
       return;
     }
+    // Переключение прямо с кошелька на календарь: не анимируем через 0
+    // (мимо передней стороны — это и давало «дёрганый» переворот с
+    // видимой вспышкой диаграммы посередине), а мгновенно перескакиваем
+    // на 0 и открываем календарь уже оттуда одним движением.
+    if (openFace === 'wallet') {
+      flipAnim.setValue(0);
+    }
     setBackContent('calendar');
     setOpenFace('calendar');
     animateFlip(1);
@@ -178,6 +220,9 @@ export function ExpensesScreen() {
       setOpenFace(null);
       animateFlip(0);
       return;
+    }
+    if (openFace === 'calendar') {
+      flipAnim.setValue(0);
     }
     loadWallet();
     setBackContent('wallet');
@@ -292,12 +337,28 @@ export function ExpensesScreen() {
       : feedItemsAll;
 
   if (!isLoading && receipts.length === 0 && pendingScans.length === 0) {
+    // Пустое состояние — но «+» обязана остаться: это главный экран,
+    // и другого места добавить первый чек у пользователя нет.
     return (
-      <ScreenPlaceholder
-        icon={Wallet}
-        title="Расходы"
-        description="Здесь появятся ваши чеки — отсканируйте первый с Главной."
-      />
+      <View style={styles.container}>
+        <ScreenPlaceholder
+          icon={Wallet}
+          title="Расходы"
+          description="Здесь появятся ваши чеки — нажмите «+» и отсканируйте первый."
+        />
+        <SpeedDialFab
+          actions={[
+            { icon: ScanLine, label: 'Сканировать чек', onPress: () => rootNav()?.navigate('Scan') },
+            { icon: PenLine, label: 'Добавить вручную', onPress: () => rootNav()?.navigate('AddExpense') },
+            { icon: WalletCards, label: 'Доход', onPress: () => rootNav()?.navigate('AddIncome') },
+          ]}
+        />
+        <ProfileMenuButton
+          avatarUri={myAvatar}
+          fallbackLetter={settings?.nickname?.trim()?.[0] ?? ''}
+          actions={profileMenuActions()}
+        />
+      </View>
     );
   }
 
@@ -319,6 +380,29 @@ export function ExpensesScreen() {
   }
 
   const monthTotal = categories.reduce((sum, c) => sum + c.total, 0);
+
+  // Советы ИИ: лимиты у порога/превышены — тап отправляет совет в чат,
+  // где ИИ разберёт его подробнее.
+  const recommendations: string[] = [];
+  for (const limit of limits) {
+    const spent = categories.find((c) => c.categoryName === limit.category_name)?.total ?? 0;
+    const percent = limit.amount > 0 ? (spent / limit.amount) * 100 : 0;
+    if (percent >= 100) {
+      recommendations.push(`Лимит «${limit.category_name}» превышен — что с этим делать?`);
+    } else if (percent >= 75) {
+      recommendations.push(`Я близок к лимиту «${limit.category_name}» (${Math.round(percent)}%) — как сэкономить?`);
+    }
+  }
+  const topRecommendations = recommendations.slice(0, 3);
+
+  function openTipInChat(tip: string) {
+    haptics.light();
+    if (userId) {
+      useChatStore.getState().sendMessage(userId, tip);
+    }
+    (navigation as unknown as { navigate: (name: string) => void }).navigate('Chat');
+  }
+
   const segments: DonutSegment[] = categories.map((c) => ({
     key: c.categoryName,
     value: c.total,
@@ -427,7 +511,9 @@ export function ExpensesScreen() {
         }
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.screenTitle}>Расходы</Text>
+            <View style={styles.headerTopRow}>
+              <Text style={styles.screenTitle}>Расходы</Text>
+            </View>
 
             {pendingScans.length > 0 && (
               <Pressable style={styles.queueBanner} onPress={() => setQueueVisible(true)}>
@@ -440,7 +526,7 @@ export function ExpensesScreen() {
 
             {segments.length > 0 && (
               <FadeInView index={0}>
-                <View style={styles.flipWrap}>
+                <View style={[styles.flipWrap, cardHeight ? { height: cardHeight } : null]}>
                   {/* Задняя сторона: мини-календарь (кнопка справа) */}
                   {backContent === 'calendar' && (
                   <Animated.View
@@ -566,6 +652,10 @@ export function ExpensesScreen() {
                   <Animated.View
                     style={[styles.chartCard, frontAnimated]}
                     pointerEvents={openFace ? 'none' : 'auto'}
+                    onLayout={(e) => {
+                      const h = Math.ceil(e.nativeEvent.layout.height);
+                      if (h > 0 && h !== cardHeight) setCardHeight(h);
+                    }}
                   >
                     {chartStyle === 'donut' ? (
                       <View style={styles.donutWrap}>
@@ -636,6 +726,16 @@ export function ExpensesScreen() {
                     >
                       <Wallet color={openFace === 'wallet' ? colors.background : colors.accent} size={18} />
                     </Pressable>
+                    <Pressable
+                      style={styles.cornerButton}
+                      onPress={() => {
+                        haptics.light();
+                        rootNav()?.navigate('Limits');
+                      }}
+                      hitSlop={6}
+                    >
+                      <ShieldCheck color={colors.accent} size={18} />
+                    </Pressable>
                   </View>
                   <View style={styles.cardCorner}>
                     {hasFamilyReceipts && (
@@ -669,6 +769,26 @@ export function ExpensesScreen() {
               </FadeInView>
             )}
 
+            {topRecommendations.length > 0 && (
+              <FadeInView index={1}>
+                <View style={styles.aiCard}>
+                  <View style={styles.aiHeader}>
+                    <Sparkles color={colors.accent} size={18} />
+                    <Text style={styles.aiTitle}>
+                      ИИ нашёл {topRecommendations.length}{' '}
+                      {topRecommendations.length === 1 ? 'рекомендацию' : 'рекомендации'}
+                    </Text>
+                  </View>
+                  {topRecommendations.map((tip, i) => (
+                    <Pressable key={i} style={styles.aiBullet} onPress={() => openTipInChat(tip)}>
+                      <View style={styles.aiDot} />
+                      <Text style={styles.aiBulletText}>{tip}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </FadeInView>
+            )}
+
             <View style={styles.sectionTitleRow}>
               <Text style={styles.sectionTitle}>
                 {selectedDay !== null
@@ -692,6 +812,19 @@ export function ExpensesScreen() {
         onClose={() => setQuickActionsReceipt(null)}
         onEdit={handleEdit}
         onDelete={handleDeleteRequest}
+      />
+
+      <SpeedDialFab
+        actions={[
+          { icon: ScanLine, label: 'Сканировать чек', onPress: () => rootNav()?.navigate('Scan') },
+          { icon: PenLine, label: 'Добавить вручную', onPress: () => rootNav()?.navigate('AddExpense') },
+          { icon: WalletCards, label: 'Доход', onPress: () => rootNav()?.navigate('AddIncome') },
+        ]}
+      />
+      <ProfileMenuButton
+        avatarUri={myAvatar}
+        fallbackLetter={settings?.nickname?.trim()?.[0] ?? ''}
+        actions={profileMenuActions()}
       />
 
       {/* Очередь чеков без сети: посмотреть, отправить, удалить */}
@@ -744,6 +877,8 @@ const styles = themedStyles(() => StyleSheet.create({
   listContent: {
     padding: 20,
     paddingTop: 64,
+    // Чтобы плавающая «+» не закрывала последний чек в списке.
+    paddingBottom: 110,
   },
   header: {
     marginBottom: 16,
@@ -754,6 +889,11 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 26,
     fontWeight: '800',
     letterSpacing: -0.3,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   queueBanner: {
     flexDirection: 'row',
@@ -808,6 +948,41 @@ const styles = themedStyles(() => StyleSheet.create({
     top: 12,
     left: 12,
     zIndex: 2,
+    gap: 8,
+  },
+  aiCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  aiHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  aiTitle: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  aiBullet: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  aiDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+  aiBulletText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 13,
   },
   cornerButton: {
     width: 34,

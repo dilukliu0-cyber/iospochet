@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CategoryIcon } from '../../components/ui/CategoryIcon';
 import { PrimaryButton } from '../../components/ui/PrimaryButton';
+import { ScreenHeader } from '../../components/ui/ScreenHeader';
 import { SelectableRow } from '../../components/ui/SelectableRow';
 import { TextField } from '../../components/ui/TextField';
 import { saveReceipt } from '../../services/receipts/receiptsService';
@@ -139,8 +140,8 @@ export function ReceiptReviewScreen({ route, navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      <ScreenHeader title="Чек распознан" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Чек распознан</Text>
         {queuedPhotos.length > 0 && (
           <Text style={styles.queueSubtitle}>Ещё {queuedPhotos.length} в очереди — сохраните, чтобы продолжить</Text>
         )}
@@ -261,11 +262,6 @@ const styles = themedStyles(() => StyleSheet.create({
     padding: 20,
     gap: 16,
     paddingBottom: 32,
-  },
-  title: {
-    color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
   },
   queueSubtitle: {
     color: colors.accent,

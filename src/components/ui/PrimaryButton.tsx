@@ -1,4 +1,3 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { colors } from '../../theme/colors';
 import { themedStyles } from '../../theme/themedStyles';
@@ -34,20 +33,13 @@ export function PrimaryButton({ label, onPress, loading, disabled, variant = 'pr
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
-      style={[styles.glow, (disabled || loading) && styles.disabled]}
+      style={[styles.button, styles.primary, (disabled || loading) && styles.disabled]}
     >
-      <LinearGradient
-        colors={[colors.accent, colors.accentAlt]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.button}
-      >
-        {loading ? (
-          <ActivityIndicator color={colors.background} />
-        ) : (
-          <Text style={styles.primaryLabel}>{label}</Text>
-        )}
-      </LinearGradient>
+      {loading ? (
+        <ActivityIndicator color={colors.background} />
+      ) : (
+        <Text style={styles.primaryLabel}>{label}</Text>
+      )}
     </Pressable>
   );
 }
@@ -59,14 +51,9 @@ const styles = themedStyles(() => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Мягкое свечение под градиентной кнопкой.
-  glow: {
-    borderRadius: 16,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+  // Однотонная заливка без градиента и неонового свечения.
+  primary: {
+    backgroundColor: colors.accent,
   },
   secondary: {
     backgroundColor: 'transparent',
