@@ -36,7 +36,8 @@
         {
           "photosPermission": "Разрешите доступ к галерее, чтобы загрузить фото чека."
         }
-      ]
+      ],
+      "@sentry/react-native/expo"
     ]
   }
 }

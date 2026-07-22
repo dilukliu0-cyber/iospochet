@@ -43,6 +43,16 @@ jobs:
           echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL" >> .env
           echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> .env
 
+      - name: Write Sentry DSN (optional)
+        # Не обязателен для сборки — если переменная не задана, приложение
+        # просто соберётся без крэш-мониторинга.
+        env:
+          SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
+        run: |
+          if [ -n "$SENTRY_DSN" ]; then
+            echo "EXPO_PUBLIC_SENTRY_DSN=$SENTRY_DSN" >> .env
+          fi
+
       - name: Expo prebuild (Android)
         run: CI=1 npx expo prebuild --platform android
 

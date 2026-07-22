@@ -3,10 +3,13 @@ import { Fragment } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Toast } from './src/components/ui/Toast';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { initSentry, Sentry } from './src/services/monitoring/sentry';
 import { useThemeStore } from './src/store/themeStore';
 import { getCurrentTheme } from './src/theme/colors';
 
-export default function App() {
+initSentry();
+
+function App() {
   const themeVersion = useThemeStore((state) => state.version);
   return (
     <SafeAreaProvider>
@@ -19,3 +22,5 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+export default Sentry.wrap(App);
