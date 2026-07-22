@@ -17,6 +17,7 @@ import { AppStack } from './AppStack';
 import { AuthNavigator } from './AuthNavigator';
 import { OnboardingNavigator } from './OnboardingNavigator';
 import { themedStyles } from '../theme/themedStyles';
+import { registerForPushNotifications } from '../services/notifications/pushNotifications';
 
 // Deep link: woilet://scan открывает сканер напрямую — для «Касания задней
 // панели» iPhone (Back Tap → быстрая команда «Открыть URL»).
@@ -69,6 +70,7 @@ export function RootNavigator() {
   useEffect(() => {
     if (userId) {
       fetchSettings(userId);
+      registerForPushNotifications(userId);
     } else {
       resetSettings();
     }

@@ -37,7 +37,14 @@
           "photosPermission": "Разрешите доступ к галерее, чтобы загрузить фото чека."
         }
       ],
-      "@sentry/react-native/expo"
+      "@sentry/react-native/expo",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#2E8659"
+        }
+      ]
     ]
   }
 }

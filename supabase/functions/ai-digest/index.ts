@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
 
     const { data: settings } = await userClient
       .from('user_settings')
-      .select('ai_tips_enabled, last_ai_digest_at')
+      .select('ai_tips_enabled, last_ai_digest_at, notifications_enabled, push_token')
       .eq('user_id', user.id)
       .single();
 
@@ -179,6 +179,12 @@ ${JSON.stringify(contextSummary)}`;
     await userClient.from('ai_messages').insert({ user_id: user.id, role: 'assistant', content: replyText });
     await userClient.from('user_settings').update({ last_ai_digest_at: now.toISOString() }).eq('user_id', user.id);
 
+    if (settings?.notifications_enabled !== false && settings?.push_token) {
+      sendPushNotification(settings.push_token, 'Woilet', replyText).catch((error) =>
+        console.error('push-notification error', error),
+      );
+    }
+
     const usage = geminiData.usageMetadata ?? {};
     const inputTokens = usage.promptTokenCount ?? 0;
     const outputTokens = usage.candidatesTokenCount ?? 0;
@@ -199,6 +205,14 @@ ${JSON.stringify(contextSummary)}`;
     return jsonResponse({ error: 'Внутренняя ошибка сервера' }, 500);
   }
 });
+
+async function sendPushNotification(pushToken: string, title: string, body: string): Promise<void> {
+  await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ to: pushToken, title, body, sound: 'default' }),
+  });
+}
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

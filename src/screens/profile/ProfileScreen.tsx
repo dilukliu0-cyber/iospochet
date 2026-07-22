@@ -22,6 +22,7 @@ import { TextField } from '../../components/ui/TextField';
 import type { AppStackParamList } from '../../navigation/types';
 import { supabase } from '../../services/api/supabaseClient';
 import { avatarUrl, pickAndUploadAvatar } from '../../services/profile/avatarService';
+import { sendTestNotification } from '../../services/notifications/pushNotifications';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToastStore } from '../../store/toastStore';
@@ -308,6 +309,10 @@ export function ProfileScreen() {
               thumbColor={colors.textPrimary}
             />
           </View>
+          <Pressable style={styles.currencyRow} onPress={() => sendTestNotification()}>
+            <Text style={styles.currencyValue}>Тестовое уведомление</Text>
+            <Text style={styles.currencyChange}>Отправить</Text>
+          </Pressable>
           <Pressable style={styles.currencyRow} onPress={() => rootNavigation()?.navigate('IntroPreview')}>
             <Text style={styles.currencyValue}>Стартовый гайд</Text>
             <Text style={styles.currencyChange}>Посмотреть</Text>
