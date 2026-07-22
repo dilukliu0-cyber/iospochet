@@ -18,10 +18,10 @@ import { AuthNavigator } from './AuthNavigator';
 import { OnboardingNavigator } from './OnboardingNavigator';
 import { themedStyles } from '../theme/themedStyles';
 
-// Deep link: aiphone://scan открывает сканер напрямую — для «Касания задней
+// Deep link: woilet://scan открывает сканер напрямую — для «Касания задней
 // панели» iPhone (Back Tap → быстрая команда «Открыть URL»).
 const linking: LinkingOptions<AppStackParamList> = {
-  prefixes: [Linking.createURL('/'), 'aiphone://'],
+  prefixes: [Linking.createURL('/'), 'woilet://'],
   config: {
     // При холодном старте по ссылке под сканером остаются табы,
     // чтобы «назад» вёл на Главную, а не закрывал приложение.

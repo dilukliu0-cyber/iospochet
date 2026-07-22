@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "aiphone",
-    "slug": "aiphone",
+    "name": "Woilet",
+    "slug": "woilet",
     "version": "1.0.0",
-    "scheme": "aiphone",
+    "scheme": "woilet",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
