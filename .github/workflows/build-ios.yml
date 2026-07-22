@@ -58,20 +58,31 @@ jobs:
         run: pod install --repo-update
 
       - name: Detect workspace and scheme
+        # Схема должна совпадать с именем главного .xcodeproj (не Pods) —
+        # просто "первая строка из списка схем" ловит внутренние Pod-схемы
+        # (EXApplication и т.п.), если та оказывается раньше по алфавиту.
         working-directory: ios
         run: |
           set -euo pipefail
           WORKSPACE=$(ls -d *.xcworkspace | head -n1)
           echo "Workspace: $WORKSPACE"
-          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list \
+          PROJECT=$(ls -d *.xcodeproj | grep -v '^Pods\.xcodeproj$' | head -n1)
+          SCHEME_NAME=$(basename "$PROJECT" .xcodeproj)
+          echo "Expected scheme (from project name): $SCHEME_NAME"
+
+          AVAILABLE_SCHEMES=$(xcodebuild -workspace "$WORKSPACE" -list \
             | awk '/Schemes:/{flag=1;next} /^ *$/{if (flag) exit} flag{print}' \
-            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-            | head -n1)
-          echo "Scheme: $SCHEME"
-          if [ -z "$WORKSPACE" ] || [ -z "$SCHEME" ]; then
-            echo "Не удалось определить workspace/scheme" >&2
+            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          echo "Available schemes:"
+          echo "$AVAILABLE_SCHEMES"
+
+          if echo "$AVAILABLE_SCHEMES" | grep -qx "$SCHEME_NAME"; then
+            SCHEME="$SCHEME_NAME"
+          else
+            echo "Схема '$SCHEME_NAME' не найдена среди доступных" >&2
             exit 1
           fi
+          echo "Scheme: $SCHEME"
           echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
           echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
 
