@@ -75,31 +75,35 @@ jobs:
           echo "WORKSPACE=$WORKSPACE" >> "$GITHUB_ENV"
           echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
 
-      - name: Archive (unsigned)
+      - name: Build (unsigned)
+        # xcodebuild archive без подписи часто не кладёт .app в
+        # Products/Applications (архивация — операция для подписанных
+        # сборок). Поэтому просто билдим в явную папку и берём .app оттуда,
+        # без архива вообще.
         working-directory: ios
         run: |
           set -euo pipefail
-          mkdir -p ../build
+          mkdir -p ../build/Products
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -sdk iphoneos \
-            -archivePath ../build/App.xcarchive \
+            -derivedDataPath ../build/DerivedData \
+            CONFIGURATION_BUILD_DIR=../build/Products \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            SKIP_INSTALL=NO \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=NO \
-            archive
+            build
 
       - name: Package IPA
         run: |
           set -euo pipefail
-          APP_PATH=$(find build/App.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n1)
+          APP_PATH=$(find build/Products -maxdepth 1 -name "*.app" | head -n1)
           if [ -z "$APP_PATH" ]; then
-            echo ".app не найден в архиве" >&2
+            echo ".app не найден в build/Products" >&2
+            find build -maxdepth 3 >&2
             exit 1
           fi
           echo "App: $APP_PATH"
