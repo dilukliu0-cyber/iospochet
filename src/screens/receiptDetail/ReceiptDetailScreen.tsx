@@ -189,11 +189,11 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {(receipt.status === 'error' || receipt.status === 'needs_review') && receipt.image_path && !editing && (
+        {receipt.status === 'error' && receipt.image_path && !editing && (
           <Pressable style={styles.rescanHint} onPress={confirmRescan} disabled={rescanning}>
             <RotateCw color={colors.accent} size={16} />
             <Text style={styles.rescanHintText}>
-              {rescanning ? 'Перезаписываю…' : 'Распозналось не с первого раза? Перезаписать чек'}
+              {rescanning ? 'Перезаписываю…' : 'Распознавание не удалось — перезаписать чек'}
             </Text>
           </Pressable>
         )}
@@ -234,7 +234,7 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
 
         {editing && (
           <View style={styles.deleteReceiptWrap}>
-            {receipt.image_path && (
+            {receipt.status === 'error' && receipt.image_path && (
               <PrimaryButton
                 label={rescanning ? 'Перезаписываю…' : 'Перезаписать чек'}
                 variant="secondary"

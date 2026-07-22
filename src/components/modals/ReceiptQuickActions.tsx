@@ -15,9 +15,10 @@ type Props = {
 };
 
 export function ReceiptQuickActions({ receipt, onClose, onEdit, onDelete, onRescan }: Props) {
-  // Перезаписать можно только чек с фото (снятый), у добавленных вручную нечего
-  // распознавать заново.
-  const canRescan = Boolean(receipt?.image_path);
+  // Перезаписать предлагаем только когда распознавание реально не удалось —
+  // на уже готовом чеке (recognized/needs_review) эта опция не нужна и будет
+  // только сбивать с толку.
+  const canRescan = Boolean(receipt?.image_path) && receipt?.status === 'error';
 
   return (
     <Modal visible={receipt !== null} transparent animationType="fade" onRequestClose={onClose}>
