@@ -89,12 +89,17 @@ jobs:
       - name: Build (unsigned)
         # xcodebuild archive без подписи часто не кладёт .app в
         # Products/Applications (архивация — операция для подписанных
-        # сборок). Поэтому просто билдим в явную папку и берём .app оттуда,
-        # без архива вообще.
+        # сборок). Поэтому просто билдим в явную derivedDataPath и берём
+        # .app из стандартного Build/Products оттуда — без архива вообще.
+        #
+        # ВАЖНО: не переопределять CONFIGURATION_BUILD_DIR вручную — это
+        # ломает пути к module map Pod-таргетов (например ExpoModulesCore),
+        # т.к. CocoaPods сам считает этот путь через xcconfig относительно
+        # derivedDataPath, и ручное переопределение с ним расходится
+        # ("module map file ... not found", "cannot load underlying module").
         working-directory: ios
         run: |
           set -euo pipefail
-          mkdir -p ../build/Products
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
@@ -102,7 +107,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -sdk iphoneos \
             -derivedDataPath ../build/DerivedData \
-            CONFIGURATION_BUILD_DIR=../build/Products \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
@@ -111,10 +115,11 @@ jobs:
       - name: Package IPA
         run: |
           set -euo pipefail
-          APP_PATH=$(find build/Products -maxdepth 1 -name "*.app" | head -n1)
+          PRODUCTS_DIR="build/DerivedData/Build/Products/Release-iphoneos"
+          APP_PATH=$(find "$PRODUCTS_DIR" -maxdepth 1 -name "*.app" | head -n1)
           if [ -z "$APP_PATH" ]; then
-            echo ".app не найден в build/Products" >&2
-            find build -maxdepth 3 >&2
+            echo ".app не найден в $PRODUCTS_DIR" >&2
+            find build -maxdepth 4 >&2
             exit 1
           fi
           echo "App: $APP_PATH"
