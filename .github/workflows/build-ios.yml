@@ -98,6 +98,15 @@ jobs:
         # derivedDataPath, и ручное переопределение с ним расходится
         # ("module map file ... not found", "cannot load underlying module").
         working-directory: ios
+        env:
+          # Без реального Sentry-аккаунта (org/project/auth token) фазы
+          # сборки "Upload Debug Symbols"/"Bundle React Native code" от
+          # @sentry/react-native падают с "error: sentry-cli - An
+          # organization ID or slug is required...". Эта переменная —
+          # штатный флаг самого плагина, чтобы пропустить обе фазы
+          # аплоада, не трогая сам RN-бандлинг. Убрать её, когда появится
+          # настоящий EXPO_PUBLIC_SENTRY_DSN + Sentry org/project/token.
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
         run: |
           set -euo pipefail
           xcodebuild \
