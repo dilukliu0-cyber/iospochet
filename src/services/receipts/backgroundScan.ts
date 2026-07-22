@@ -4,6 +4,7 @@ import { scanReceipt } from '../ai/scanReceipt';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useToastStore } from '../../store/toastStore';
 import type { RecognizedReceipt } from '../../types/receipt';
+import type { ReceiptRecord } from '../../types/receiptRecord';
 import { autoCheckShoppingList } from './receiptsService';
 
 // §13 (пожелание): фото не блокирует пользователя. Чек создаётся сразу со
@@ -54,6 +55,74 @@ export async function submitScan(
   });
 
   return { receiptId: receipt.id, error: null };
+}
+
+// «Перезаписать»: распознать заново уже загруженное фото, без пересъёмки.
+// Нужно, когда с первого раза магазин/товары не распозналось (status error
+// или пустой чек). Фото берём из хранилища по image_path, старые позиции
+// удаляем и прогоняем ту же фоновую обработку, что и при обычном скане.
+export async function rescanReceipt(receipt: ReceiptRecord): Promise<{ error: string | null }> {
+  if (!receipt.image_path) {
+    return { error: 'У этого чека нет фото — перезаписывать нечего.' };
+  }
+
+  // Сразу переводим в «Обрабатывается», чтобы список/экран показали прогресс.
+  await supabase
+    .from('receipts')
+    .update({ status: 'processing', warnings: [] })
+    .eq('id', receipt.id);
+
+  const { data: blob, error: downloadError } = await supabase.storage
+    .from('receipts')
+    .download(receipt.image_path);
+
+  if (downloadError || !blob) {
+    await supabase
+      .from('receipts')
+      .update({ status: 'error', warnings: ['Не удалось загрузить фото чека для перезаписи.'] })
+      .eq('id', receipt.id);
+    return { error: downloadError?.message ?? 'Не удалось загрузить фото чека.' };
+  }
+
+  let imageBase64: string;
+  try {
+    imageBase64 = await blobToBase64(blob);
+  } catch {
+    await supabase
+      .from('receipts')
+      .update({ status: 'error', warnings: ['Не удалось прочитать фото чека для перезаписи.'] })
+      .eq('id', receipt.id);
+    return { error: 'Не удалось прочитать фото чека.' };
+  }
+
+  const baseCurrency = receipt.base_currency ?? receipt.currency ?? 'CZK';
+
+  // Старые позиции убираем — фоновая обработка вставит распознанные заново.
+  await supabase.from('receipt_items').delete().eq('receipt_id', receipt.id);
+
+  // Фон: не await'ится — ошибки переводят чек в статус error.
+  processInBackground(receipt.id, receipt.user_id, imageBase64, baseCurrency).catch(async () => {
+    await supabase
+      .from('receipts')
+      .update({ status: 'error', warnings: ['Не удалось распознать чек. Попробуйте перезаписать ещё раз.'] })
+      .eq('id', receipt.id);
+  });
+
+  return { error: null };
+}
+
+// Blob из хранилища → base64 (без префикса data:). FileReader — самый
+// совместимый способ в Expo/RN, blob.arrayBuffer() тут не гарантирован.
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      resolve(result.split(',')[1] ?? '');
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function processInBackground(

@@ -52,7 +52,7 @@ import {
 } from '../../services/analytics/categoryBreakdown';
 import { getQueue, removeFromQueue, type QueuedScan } from '../../services/offlineQueue/offlineQueue';
 import { avatarUrl } from '../../services/profile/avatarService';
-import { submitScan } from '../../services/receipts/backgroundScan';
+import { rescanReceipt, submitScan } from '../../services/receipts/backgroundScan';
 import { deleteReceipt } from '../../services/receipts/receiptsService';
 import { deleteIncome, fetchIncomes, fetchWalletBalance } from '../../services/wallet/walletService';
 import { useAuthStore } from '../../store/authStore';
@@ -287,6 +287,22 @@ export function ExpensesScreen() {
     const id = quickActionsReceipt.id;
     setQuickActionsReceipt(null);
     openDetail(id);
+  }
+
+  async function handleRescan() {
+    if (!quickActionsReceipt) return;
+    const receipt = quickActionsReceipt;
+    setQuickActionsReceipt(null);
+    if (!receipt.image_path) {
+      Alert.alert('Нет фото', 'Этот чек добавлен вручную — перезаписывать нечего.');
+      return;
+    }
+    showToast('Перезаписываю чек — распознаю заново…');
+    const { error } = await rescanReceipt(receipt);
+    if (userId) fetchReceipts(userId);
+    if (error) {
+      Alert.alert('Не удалось перезаписать', error);
+    }
   }
 
   function handleDeleteRequest() {
@@ -812,6 +828,7 @@ export function ExpensesScreen() {
         onClose={() => setQuickActionsReceipt(null)}
         onEdit={handleEdit}
         onDelete={handleDeleteRequest}
+        onRescan={handleRescan}
       />
 
       <SpeedDialFab

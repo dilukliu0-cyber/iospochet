@@ -1,5 +1,5 @@
 import { BlurView } from 'expo-blur';
-import { Pencil, Trash2 } from 'lucide-react-native';
+import { Pencil, RefreshCw, Trash2 } from 'lucide-react-native';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ReceiptListItem } from '../cards/ReceiptListItem';
 import { colors } from '../../theme/colors';
@@ -11,9 +11,14 @@ type Props = {
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onRescan: () => void;
 };
 
-export function ReceiptQuickActions({ receipt, onClose, onEdit, onDelete }: Props) {
+export function ReceiptQuickActions({ receipt, onClose, onEdit, onDelete, onRescan }: Props) {
+  // Перезаписать можно только чек с фото (снятый), у добавленных вручную нечего
+  // распознавать заново.
+  const canRescan = Boolean(receipt?.image_path);
+
   return (
     <Modal visible={receipt !== null} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
@@ -28,6 +33,12 @@ export function ReceiptQuickActions({ receipt, onClose, onEdit, onDelete }: Prop
                 <Pencil color={colors.textPrimary} size={18} />
                 <Text style={styles.actionLabel}>Редактировать</Text>
               </Pressable>
+              {canRescan && (
+                <Pressable style={styles.actionButton} onPress={onRescan}>
+                  <RefreshCw color={colors.accent} size={18} />
+                  <Text style={[styles.actionLabel, styles.rescanLabel]}>Перезаписать</Text>
+                </Pressable>
+              )}
               <Pressable style={[styles.actionButton, styles.deleteButton]} onPress={onDelete}>
                 <Trash2 color={colors.error} size={18} />
                 <Text style={[styles.actionLabel, styles.deleteLabel]}>Удалить</Text>
@@ -79,6 +90,9 @@ const styles = themedStyles(() => StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 15,
     fontWeight: '500',
+  },
+  rescanLabel: {
+    color: colors.accent,
   },
   deleteLabel: {
     color: colors.error,

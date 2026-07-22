@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Receipt as ReceiptIcon, Trash2, X } from 'lucide-react-native';
+import { ArrowLeft, Receipt as ReceiptIcon, RotateCw, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CategoryIcon } from '../../components/ui/CategoryIcon';
@@ -8,14 +8,29 @@ import { SelectableRow } from '../../components/ui/SelectableRow';
 import { TextField } from '../../components/ui/TextField';
 import type { AppStackParamList } from '../../navigation/types';
 import { deleteReceipt, deleteReceiptItem, updateReceiptItem } from '../../services/receipts/receiptsService';
+import { rescanReceipt } from '../../services/receipts/backgroundScan';
 import { getReceiptImageUrl } from '../../services/receipts/receiptImage';
 import { supabase } from '../../services/api/supabaseClient';
 import { colors } from '../../theme/colors';
-import type { ReceiptItemRecord, ReceiptRecord } from '../../types/receiptRecord';
+import type { ReceiptItemRecord, ReceiptRecord, ReceiptStatus } from '../../types/receiptRecord';
 import { CATEGORY_NAMES } from '../../utils/categoryIconMap';
 import { themedStyles } from '../../theme/themedStyles';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReceiptDetail'>;
+
+const STATUS_LABEL: Record<ReceiptStatus, string> = {
+  processing: 'Обрабатывается…',
+  recognized: 'Распознано',
+  needs_review: 'Нужно проверить',
+  error: 'Не распознано',
+};
+
+const STATUS_COLOR: Record<ReceiptStatus, string> = {
+  processing: colors.textSecondary,
+  recognized: colors.success,
+  needs_review: colors.warning,
+  error: colors.error,
+};
 
 export function ReceiptDetailScreen({ route, navigation }: Props) {
   const { receiptId } = route.params;
@@ -30,6 +45,7 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
   const [editPrice, setEditPrice] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [saving, setSaving] = useState(false);
+  const [rescanning, setRescanning] = useState(false);
 
   useEffect(() => {
     load();
@@ -99,6 +115,32 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
     navigation.goBack();
   }
 
+  function confirmRescan() {
+    Alert.alert(
+      'Перезаписать чек?',
+      'Фото будет распознано заново. Текущие товары чека заменятся распознанными.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        { text: 'Перезаписать', onPress: handleRescan },
+      ],
+    );
+  }
+
+  async function handleRescan() {
+    if (!receipt?.image_path) return;
+    setRescanning(true);
+    const { error } = await rescanReceipt(receipt);
+    setRescanning(false);
+    if (error) {
+      Alert.alert('Не удалось перезаписать', error);
+      return;
+    }
+    // Обработка идёт в фоне: перечитываем чек — статус станет «Обрабатывается»,
+    // товары обновятся при следующем открытии/обновлении экрана.
+    await load();
+    setEditing(false);
+  }
+
   if (loading || !receipt) {
     return (
       <View style={styles.loading}>
@@ -139,8 +181,22 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
             <Text style={styles.total}>
               {(receipt.total_amount ?? 0).toFixed(2)} {receipt.currency}
             </Text>
+            {receipt.source !== 'manual' && (
+              <Text style={[styles.statusText, { color: STATUS_COLOR[receipt.status] }]}>
+                {STATUS_LABEL[receipt.status]}
+              </Text>
+            )}
           </View>
         </View>
+
+        {(receipt.status === 'error' || receipt.status === 'needs_review') && receipt.image_path && !editing && (
+          <Pressable style={styles.rescanHint} onPress={confirmRescan} disabled={rescanning}>
+            <RotateCw color={colors.accent} size={16} />
+            <Text style={styles.rescanHintText}>
+              {rescanning ? 'Перезаписываю…' : 'Распозналось не с первого раза? Перезаписать чек'}
+            </Text>
+          </Pressable>
+        )}
 
         <Text style={styles.sectionTitle}>Товары ({items.length})</Text>
 
@@ -178,6 +234,14 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
 
         {editing && (
           <View style={styles.deleteReceiptWrap}>
+            {receipt.image_path && (
+              <PrimaryButton
+                label={rescanning ? 'Перезаписываю…' : 'Перезаписать чек'}
+                variant="secondary"
+                onPress={confirmRescan}
+                loading={rescanning}
+              />
+            )}
             <PrimaryButton
               label="Удалить чек"
               variant="secondary"
@@ -344,6 +408,26 @@ const styles = themedStyles(() => StyleSheet.create({
     fontWeight: '700',
     marginTop: 8,
   },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  rescanHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.accentSoft,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  rescanHintText: {
+    flex: 1,
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '500',
+  },
   sectionTitle: {
     color: colors.textPrimary,
     fontSize: 16,
@@ -393,6 +477,7 @@ const styles = themedStyles(() => StyleSheet.create({
   },
   deleteReceiptWrap: {
     marginTop: 8,
+    gap: 10,
   },
   backdrop: {
     flex: 1,

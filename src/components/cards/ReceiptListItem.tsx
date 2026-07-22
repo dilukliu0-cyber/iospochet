@@ -48,7 +48,7 @@ export function ReceiptListItem({ receipt, onPress, onLongPress, style, ownerAva
       style={[styles.card, style]}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={2000}
+      delayLongPress={400}
     >
       <View style={styles.thumbnailWrap}>
         <View style={styles.thumbnail}>
