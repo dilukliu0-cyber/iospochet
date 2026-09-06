@@ -26,6 +26,18 @@ type Props = NativeStackScreenProps<AppStackParamList, 'ReceiptDetail'>;
 // Марка товара распознавалась и попадала в базу, но нигде не показывалась.
 // Выводим её рядом с категорией — но только если её нет в самом названии,
 // иначе строка читалась бы как «Вафли Horalky · Horalky · Сладости».
+// Когда в строке несколько штук, по одной цене не понять, за что она — за
+// штуку или за всё. Показываем разбивку «3 × 24.90» под ценой.
+//
+// unit_price распознавался и писался в базу, но нигде не читался. Если его
+// нет (старые чеки), считаем сами из суммы строки.
+function unitPriceLabel(item: ReceiptItemRecord): string {
+  if (item.quantity <= 1) return '';
+  const each = item.unit_price ?? item.price / item.quantity;
+  if (!Number.isFinite(each)) return '';
+  return `${item.quantity} × ${each.toFixed(2)}`;
+}
+
 function brandLabel(item: ReceiptItemRecord): string {
   const brand = item.brand?.trim();
   if (!brand) return '';
@@ -232,9 +244,14 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
                     {item.needs_review ? t('receipt_detail_needs_review_suffix') : ''}
                   </Text>
                 </View>
-                <Text style={styles.itemPrice}>
-                  {item.price.toFixed(2)} {receipt.currency}
-                </Text>
+                <View style={styles.itemPriceBox}>
+                  <Text style={styles.itemPrice}>
+                    {item.price.toFixed(2)} {receipt.currency}
+                  </Text>
+                  {unitPriceLabel(item) !== '' && (
+                    <Text style={styles.itemUnitPrice}>{unitPriceLabel(item)}</Text>
+                  )}
+                </View>
                 {editing && (
                   <Pressable onPress={() => handleDeleteItem(item)} hitSlop={10} style={styles.deleteItemButton}>
                     <Trash2 color={colors.textSecondary} size={16} />
@@ -515,10 +532,18 @@ const styles = themedStyles(() => StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  itemPriceBox: {
+    alignItems: 'flex-end',
+  },
   itemPrice: {
     color: colors.textPrimary,
     fontSize: 15,
     fontWeight: '600',
+  },
+  itemUnitPrice: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
   },
   deleteItemButton: {
     paddingLeft: 8,
