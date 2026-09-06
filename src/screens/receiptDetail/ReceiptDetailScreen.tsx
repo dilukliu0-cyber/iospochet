@@ -23,6 +23,15 @@ import { themedStyles } from '../../theme/themedStyles';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReceiptDetail'>;
 
+// Марка товара распознавалась и попадала в базу, но нигде не показывалась.
+// Выводим её рядом с категорией — но только если её нет в самом названии,
+// иначе строка читалась бы как «Вафли Horalky · Horalky · Сладости».
+function brandLabel(item: ReceiptItemRecord): string {
+  const brand = item.brand?.trim();
+  if (!brand) return '';
+  return item.cleaned_name.toLowerCase().includes(brand.toLowerCase()) ? '' : brand;
+}
+
 const STATUS_LABEL_KEY: Record<ReceiptStatus, TranslationKey> = {
   processing: 'receipt_detail_status_processing',
   recognized: 'receipt_status_recognized',
@@ -217,7 +226,9 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemName}>{item.cleaned_name}</Text>
                   <Text style={styles.itemCategory}>
-                    {translateCategoryName(item.category_name, locale)}
+                    {[brandLabel(item), translateCategoryName(item.category_name, locale)]
+                      .filter(Boolean)
+                      .join(' · ')}
                     {item.needs_review ? t('receipt_detail_needs_review_suffix') : ''}
                   </Text>
                 </View>
