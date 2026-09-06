@@ -1,5 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, RotateCw, Trash2, X } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, RotateCw, Trash2, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CategoryIcon } from '../../components/ui/CategoryIcon';
@@ -23,9 +23,6 @@ import { themedStyles } from '../../theme/themedStyles';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReceiptDetail'>;
 
-// Марка товара распознавалась и попадала в базу, но нигде не показывалась.
-// Выводим её рядом с категорией — но только если её нет в самом названии,
-// иначе строка читалась бы как «Вафли Horalky · Horalky · Сладости».
 // Когда в строке несколько штук, по одной цене не понять, за что она — за
 // штуку или за всё. Показываем разбивку «3 × 24.90» под ценой.
 //
@@ -38,6 +35,9 @@ function unitPriceLabel(item: ReceiptItemRecord): string {
   return `${item.quantity} × ${each.toFixed(2)}`;
 }
 
+// Марка товара распознавалась и попадала в базу, но нигде не показывалась.
+// Выводим её рядом с категорией — но только если её нет в самом названии,
+// иначе строка читалась бы как «Вафли Horalky · Horalky · Сладости».
 function brandLabel(item: ReceiptItemRecord): string {
   const brand = item.brand?.trim();
   if (!brand) return '';
@@ -212,6 +212,17 @@ export function ReceiptDetailScreen({ route, navigation }: Props) {
             )}
           </View>
         </View>
+
+        {receipt.warnings.length > 0 && (
+          <View style={styles.warningsCard}>
+            {receipt.warnings.map((warning, i) => (
+              <View key={i} style={styles.warningRow}>
+                <AlertTriangle color={colors.warning} size={16} />
+                <Text style={styles.warningText}>{warning}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {receipt.status === 'error' && receipt.image_path && !editing && (
           <Pressable style={styles.rescanHint} onPress={confirmRescan} disabled={rescanning}>
@@ -531,6 +542,25 @@ const styles = themedStyles(() => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 12,
     marginTop: 2,
+  },
+  warningsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.warning,
+    padding: 12,
+    gap: 8,
+  },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  warningText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontSize: 13,
+    lineHeight: 18,
   },
   itemPriceBox: {
     alignItems: 'flex-end',

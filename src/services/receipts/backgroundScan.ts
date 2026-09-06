@@ -155,8 +155,30 @@ async function processInBackground(
     throw new Error(error ?? 'empty result');
   }
 
-  const status = recognized.items.some((item) => item.needsReview) ? 'needs_review' : 'recognized';
+  let status = recognized.items.some((item) => item.needsReview) ? 'needs_review' : 'recognized';
   const warnings = [...recognized.warnings];
+
+  // Защита от повторного скана одного чека. Она была написана целиком, но
+  // жила в saveReceipt, который перестали вызывать при переходе на фоновое
+  // распознавание, — и с тех пор второй скан того же чека молча удваивал
+  // траты.
+  //
+  // Вернуть как было нельзя: раньше проверка шла ДО вставки и просто
+  // отказывалась сохранять, а теперь строка чека создаётся сразу, ещё до
+  // того как известно, что на фото. Поэтому проверяем после распознавания и
+  // НЕ удаляем: ложное срабатывание молча уничтожило бы чек. Помечаем — и
+  // решает пользователь.
+  const receiptHash = computeHash(recognized);
+  const duplicate = await findDuplicate(userId, receiptHash, receiptId);
+  if (duplicate) {
+    warnings.push(
+      translate('svc_warn_duplicate', {
+        date: duplicate.purchase_date ?? '—',
+        total: `${(duplicate.total_amount ?? 0).toFixed(2)} ${duplicate.currency ?? ''}`.trim(),
+      }),
+    );
+    status = 'needs_review';
+  }
 
   let rate: number | null = 1;
   if (recognized.currency !== baseCurrency) {
@@ -179,7 +201,7 @@ async function processInBackground(
       status,
       warnings,
       exchange_rate: rate ?? 1,
-      receipt_hash: computeHash(recognized),
+      receipt_hash: receiptHash,
     })
     .eq('id', receiptId);
 
@@ -256,6 +278,41 @@ async function fetchRate(from: string, to: string): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+type DuplicateReceipt = {
+  purchase_date: string | null;
+  total_amount: number | null;
+  currency: string | null;
+};
+
+/**
+ * Ищет уже сохранённый чек с тем же отпечатком.
+ *
+ * Себя исключаем обязательно: при пересканировании хеш уже записан прошлым
+ * проходом, и чек нашёл бы сам себя.
+ *
+ * Ограничения по времени скана нет, в отличие от прежней версии. Отпечаток
+ * включает магазин, дату и время покупки — совпадение означает тот же самый
+ * чек, когда бы его ни сфотографировали. Чек без времени теоретически может
+ * совпасть с другим (тот же магазин, день, сумма и первые товары), но мы
+ * только помечаем, а не удаляем, так что цена ошибки — лишняя пометка.
+ */
+async function findDuplicate(
+  userId: string,
+  receiptHash: string,
+  exceptReceiptId: string,
+): Promise<DuplicateReceipt | null> {
+  const { data } = await supabase
+    .from('receipts')
+    .select('purchase_date, total_amount, currency')
+    .eq('user_id', userId)
+    .eq('receipt_hash', receiptHash)
+    .neq('id', exceptReceiptId)
+    .limit(1)
+    .maybeSingle();
+
+  return data ?? null;
 }
 
 function computeHash(recognized: RecognizedReceipt): string {
