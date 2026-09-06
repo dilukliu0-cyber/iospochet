@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Fragment } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { endAllScanActivities } from './modules/live-activity';
 import { Toast } from './src/components/ui/Toast';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { initSentry, Sentry } from './src/services/monitoring/sentry';
@@ -9,6 +10,11 @@ import { useThemeStore } from './src/store/themeStore';
 import { getCurrentTheme } from './src/theme/colors';
 
 initSentry();
+
+// Если приложение убили посреди распознавания, Live Activity переживёт
+// перезапуск и навсегда останется в состоянии «распознаю чек» — гасить её
+// будет уже некому. Поэтому на старте подчищаем всё, что осталось.
+void endAllScanActivities();
 
 function App() {
   const themeVersion = useThemeStore((state) => state.version);

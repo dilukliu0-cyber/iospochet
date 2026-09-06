@@ -13,7 +13,8 @@
       "bundleIdentifier": "com.dilukliu0.iospochet",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {
@@ -53,7 +54,8 @@
           "icon": "./assets/android-icon-monochrome.png",
           "color": "#2E8659"
         }
-      ]
+      ],
+      "@bacons/apple-targets"
     ],
     "extra": {
       "eas": {

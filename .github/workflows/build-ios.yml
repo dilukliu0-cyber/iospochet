@@ -23,6 +23,13 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      - name: Check Live Activity attributes are in sync
+        # Структура ScanActivityAttributes лежит в двух копиях (под модуля и
+        # таргет виджета собираются раздельно). ActivityKit связывает их по
+        # имени типа, поэтому расхождение полей НЕ ломает компиляцию — островок
+        # просто не появляется на устройстве. Ловим здесь, пока не поздно.
+        run: node scripts/check-live-activity-sync.mjs
+
       - name: Write .env
         # Значения берутся из Repository variables (Settings → Secrets and
         # variables → Actions → Variables) — задайте там EXPO_PUBLIC_SUPABASE_URL

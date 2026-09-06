@@ -8,6 +8,7 @@ import type { ReceiptRecord } from '../../types/receiptRecord';
 import { autoCheckShoppingList } from './receiptsService';
 import { runProductDedupe } from './productDedupe';
 import { translate } from '../../i18n/translate';
+import { beginScanActivity, failScanActivity, finishScanActivity } from './scanActivity';
 
 // §13 (пожелание): фото не блокирует пользователя. Чек создаётся сразу со
 // статусом processing, Gemini работает в фоне, строка в «Расходах» обновится
@@ -20,6 +21,9 @@ export async function submitScan(
   imageBase64: string,
   baseCurrency: string,
 ): Promise<SubmitResult> {
+  // Островок запускаем до загрузки фото: она сама занимает несколько секунд,
+  // и всё это время пользователь иначе не видит никакого отклика.
+  const activityId = beginScanActivity();
   const imagePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 6)}.jpg`;
 
   const { error: uploadError } = await supabase.storage
@@ -27,6 +31,7 @@ export async function submitScan(
     .upload(imagePath, decode(imageBase64), { contentType: 'image/jpeg' });
 
   if (uploadError) {
+    failScanActivity(activityId);
     return { receiptId: null, error: uploadError.message };
   }
 
@@ -45,11 +50,13 @@ export async function submitScan(
     .single();
 
   if (insertError || !receipt) {
+    failScanActivity(activityId);
     return { receiptId: null, error: insertError?.message ?? translate('svc_receipt_create_failed') };
   }
 
   // Фон: не await'ится вызывающим — ошибки переводят чек в статус error.
-  processInBackground(receipt.id, userId, imageBase64, baseCurrency).catch(async () => {
+  processInBackground(receipt.id, userId, imageBase64, baseCurrency, activityId).catch(async () => {
+    failScanActivity(activityId);
     await supabase
       .from('receipts')
       .update({ status: 'error', warnings: [translate('svc_warn_not_recognized')] })
@@ -68,6 +75,8 @@ export async function rescanReceipt(receipt: ReceiptRecord): Promise<{ error: st
     return { error: translate('svc_warn_no_photo') };
   }
 
+  const activityId = beginScanActivity();
+
   // Сразу переводим в «Обрабатывается», чтобы список/экран показали прогресс.
   await supabase
     .from('receipts')
@@ -83,6 +92,7 @@ export async function rescanReceipt(receipt: ReceiptRecord): Promise<{ error: st
       .from('receipts')
       .update({ status: 'error', warnings: [translate('svc_warn_photo_download_failed')] })
       .eq('id', receipt.id);
+    failScanActivity(activityId);
     return { error: downloadError?.message ?? translate('svc_warn_photo_download_failed') };
   }
 
@@ -94,6 +104,7 @@ export async function rescanReceipt(receipt: ReceiptRecord): Promise<{ error: st
       .from('receipts')
       .update({ status: 'error', warnings: [translate('svc_warn_photo_read_failed')] })
       .eq('id', receipt.id);
+    failScanActivity(activityId);
     return { error: translate('svc_warn_photo_read_failed') };
   }
 
@@ -103,7 +114,8 @@ export async function rescanReceipt(receipt: ReceiptRecord): Promise<{ error: st
   await supabase.from('receipt_items').delete().eq('receipt_id', receipt.id);
 
   // Фон: не await'ится — ошибки переводят чек в статус error.
-  processInBackground(receipt.id, receipt.user_id, imageBase64, baseCurrency).catch(async () => {
+  processInBackground(receipt.id, receipt.user_id, imageBase64, baseCurrency, activityId).catch(async () => {
+    failScanActivity(activityId);
     await supabase
       .from('receipts')
       .update({ status: 'error', warnings: [translate('svc_warn_rescan_failed')] })
@@ -132,6 +144,7 @@ async function processInBackground(
   userId: string,
   imageBase64: string,
   baseCurrency: string,
+  activityId: string | null,
 ): Promise<void> {
   const settings = useSettingsStore.getState().settings;
   const { data: recognized, error } = await scanReceipt(imageBase64, 'image/jpeg', {
@@ -193,6 +206,15 @@ async function processInBackground(
     const { error: itemsError } = await supabase.from('receipt_items').insert(itemsPayload);
     if (itemsError) throw new Error(itemsError.message);
   }
+
+  // Итог в островке — только после того, как позиции реально легли в базу:
+  // иначе он отрапортовал бы об успехе, которого нет.
+  finishScanActivity(activityId, {
+    storeName: recognized.storeName,
+    totalAmount: recognized.totalAmount,
+    currency: recognized.currency,
+    itemCount: recognized.items.length,
+  });
 
   // Разбор дублей запускается сам после скана: сервер решает, не рано ли, и
   // ничего не делает чаще раза в сутки. Результат показываем — объединение
